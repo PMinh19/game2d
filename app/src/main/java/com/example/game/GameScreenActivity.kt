@@ -259,7 +259,7 @@ fun GameScreen(
                 m.y.value += m.speed
                 if (m.y.value > screenHeightPx + 100f && m.hp.value > 0) {
                     respawnMonster(m, screenWidthPx)
-                    planeHp.value -= 10
+                    planeHp.value -= 50
                     if (planeHp.value < 0) planeHp.value = 0
                 }
                 delay(16)
