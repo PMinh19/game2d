@@ -25,7 +25,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Các activity khác -->
+        <!-- Các activity khá
+        c -->
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".GameScreenActivity" android:exported="false" />
         <activity android:name=".Level2Activity" android:exported="false" />

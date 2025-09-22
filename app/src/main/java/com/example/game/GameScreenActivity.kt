@@ -1,5 +1,8 @@
 package com.example.game
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Checkbox
 
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -66,7 +69,7 @@ class GameScreenActivity : ComponentActivity() {
             mediaPlayer = MediaPlayer.create(this, R.raw.background_music).apply {
                 setOnPreparedListener { start() }
                 setOnCompletionListener { seekTo(0); start() }
-                setVolume(0.5f, 0.5f)
+                setVolume(1f, 1f)
             }
         } catch (e: Exception) {
             Log.e("MediaPlayer", "Failed to initialize MediaPlayer: ${e.message}")
@@ -170,8 +173,6 @@ private fun checkCollisionPlaneCoin(
             planeY < coin.y.value + coinHeight &&
             planeY + planeHeight > coin.y.value
 }
-
-// ---------------------- MAIN SCREEN ----------------------
 @Composable
 fun GameScreen(
     onExit: () -> Unit,
@@ -184,13 +185,15 @@ fun GameScreen(
 ) {
     val density = LocalDensity.current
     val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
-    var isSoundEnabled by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
     val db = FirebaseFirestore.getInstance()
     val playerName = PrefManager.getPlayerName(LocalContext.current)
 
-    // ------------------ BAGCOIN SCORE STATE ------------------
+    var musicEnabled by remember { mutableStateOf(true) }   // Nhạc nền
+    var sfxEnabled by remember { mutableStateOf(true) }
     val totalScore = remember { mutableStateOf(0) }
+    var expanded by remember { mutableStateOf(false) }
+    var isGameOver by remember { mutableStateOf(false) }
 
     // Load score từ Firebase
     LaunchedEffect(playerName) {
@@ -204,14 +207,13 @@ fun GameScreen(
                         totalScore.value = score.toInt()
                     }
                 }
-                .addOnFailureListener { e -> Log.w("Firebase", "Failed to load score", e) }
         }
     }
 
     // MediaPlayer toggle
-    LaunchedEffect(isSoundEnabled) {
+    LaunchedEffect(musicEnabled) {
         try {
-            if (isSoundEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
+            if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
         } catch (_: Exception) {}
     }
 
@@ -222,18 +224,16 @@ fun GameScreen(
 
     // Bullets
     val bullets = remember { mutableStateListOf<Bullet>() }
-
     LaunchedEffect(Unit) {
-        while (true) {
+        while (!isGameOver) {
             bullets.add(Bullet(planeX - 20f, planeY))
             bullets.add(Bullet(planeX + 20f, planeY))
-            if (isSoundEnabled) soundPool.play(shootSoundId, 0.5f, 0.5f, 1, 0, 1f)
+            if (sfxEnabled) soundPool.play(shootSoundId, 0.5f, 0.5f, 1, 0, 1f)
             delay(350)
         }
     }
-
     LaunchedEffect(Unit) {
-        while (true) {
+        while (!isGameOver) {
             bullets.forEach { it.y -= 20f }
             bullets.removeAll { it.y < -40f }
             delay(16)
@@ -252,15 +252,17 @@ fun GameScreen(
             )
         }
     }
-
     monsters.forEach { m ->
         LaunchedEffect(m) {
-            while (true) {
+            while (!isGameOver) {
                 m.y.value += m.speed
                 if (m.y.value > screenHeightPx + 100f && m.hp.value > 0) {
                     respawnMonster(m, screenWidthPx)
                     planeHp.value -= 50
-                    if (planeHp.value < 0) planeHp.value = 0
+                    if (planeHp.value <= 0) {
+                        planeHp.value = 0
+                        isGameOver = true
+                    }
                 }
                 delay(16)
             }
@@ -278,15 +280,12 @@ fun GameScreen(
             )
         }
     }
-
     coins.forEach { c ->
         LaunchedEffect(c) {
-            while (true) {
+            while (!isGameOver) {
                 if (!c.collected.value) {
                     c.y.value += c.speed
-                    if (c.y.value > screenHeightPx + 50f) {
-                        respawnCoin(c, screenWidthPx)
-                    }
+                    if (c.y.value > screenHeightPx + 50f) respawnCoin(c, screenWidthPx)
                 }
                 delay(16)
             }
@@ -296,21 +295,19 @@ fun GameScreen(
     // Bagcoin displays
     val bagCoins = remember { mutableStateListOf<BagCoinDisplay>() }
 
-    // ------------------ THROTTLE HIT SOUND ------------------
+    // Throttle hit sound
     var lastHitTime by remember { mutableStateOf(0L) }
     fun playHitSound() {
         val now = System.currentTimeMillis()
         if (now - lastHitTime > 50) {
-            if (isSoundEnabled) {
-                soundPool.play(hitSoundId, 0.8f, 0.8f, 2, 0, 1f)
-            }
+            if (sfxEnabled) soundPool.play(hitSoundId, 0.8f, 0.8f, 2, 0, 1f)
             lastHitTime = now
         }
     }
 
-    // Collision: bullets ↔ monsters
+    // Collision bullets ↔ monsters
     LaunchedEffect(Unit) {
-        while (true) {
+        while (!isGameOver) {
             val bulletIterator = bullets.iterator()
             while (bulletIterator.hasNext()) {
                 val b = bulletIterator.next()
@@ -329,13 +326,16 @@ fun GameScreen(
         }
     }
 
-    // Collision: plane ↔ monsters
+    // Collision plane ↔ monsters
     LaunchedEffect(Unit) {
-        while (true) {
+        while (!isGameOver) {
             monsters.forEach { m ->
                 if (checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)) {
                     planeHp.value -= 50
-                    if (planeHp.value < 0) planeHp.value = 0
+                    if (planeHp.value <= 0) {
+                        planeHp.value = 0
+                        isGameOver = true
+                    }
                     respawnMonster(m, screenWidthPx)
                 }
             }
@@ -343,15 +343,15 @@ fun GameScreen(
         }
     }
 
-    // Collision: plane ↔ coins
+    // Collision plane ↔ coins
     LaunchedEffect(Unit) {
-        while (true) {
+        while (!isGameOver) {
             coins.forEach { c ->
                 if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
                     c.collected.value = true
-                    totalScore.value += 1  // tăng tổng số coin
+                    totalScore.value += 1
 
-                    // ------------------ LƯU SCORE LÊN FIREBASE ------------------
+                    // Upload score
                     if (!playerName.isNullOrBlank()) {
                         db.collection("rankings")
                             .whereEqualTo("name", playerName)
@@ -361,17 +361,14 @@ fun GameScreen(
                                     val docId = docs.documents[0].id
                                     db.collection("rankings").document(docId)
                                         .update("score", totalScore.value)
-                                        .addOnFailureListener { e -> Log.e("Firebase", "Failed to update score", e) }
                                 } else {
-                                    val data = hashMapOf("name" to playerName, "score" to totalScore.value)
-                                    db.collection("rankings").add(data)
+                                    db.collection("rankings").add(
+                                        hashMapOf("name" to playerName, "score" to totalScore.value)
+                                    )
                                 }
                             }
                     }
 
-                    if (isSoundEnabled) soundPool.play(coinSoundId, 1f, 1f, 3, 0, 1f)
-
-                    // Thêm bagcoin hiển thị
                     val bag = BagCoinDisplay(c.x, c.y.value, totalScore.value)
                     bagCoins.add(bag)
                     coroutineScope.launch { delay(1000); bagCoins.remove(bag) }
@@ -389,21 +386,18 @@ fun GameScreen(
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
-                    planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - 100f)
+                    if (!isGameOver) planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - 100f)
                     change.consume()
                 }
             }
     ) {
         MovingBackgroundOffset(screenWidthPx)
-        var context= LocalContext.current
+
+        val context = LocalContext.current
         IconButton(
             onClick = {
-
-                // Upload score trước khi thoát
                 val playerName = PrefManager.getPlayerName(context)
-                if (!playerName.isNullOrBlank()) {
-                    uploadScoreToFirebase(playerName, totalScore.value)
-                }
+                if (!playerName.isNullOrBlank()) uploadScoreToFirebase(playerName, totalScore.value)
                 onExit()
             },
             modifier = Modifier
@@ -413,29 +407,34 @@ fun GameScreen(
             Icon(painterResource(R.drawable.ic_close), contentDescription = "Exit")
         }
 
-        // Sound toggle
-        var soundEnabled by remember { mutableStateOf(true) }
+        // Sound menu
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 56.dp, end = 16.dp)
-                .size(50.dp),
-            contentAlignment = Alignment.Center
+                .padding(top = 70.dp, end = 16.dp)
         ) {
-            IconToggleButton(
-                checked = soundEnabled,
-                onCheckedChange = {
-                    soundEnabled = it
-                    isSoundEnabled = soundEnabled
-                    if (soundEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
-                },
-                modifier = Modifier.size(36.dp)
-            ) {
+            IconButton(onClick = { expanded = true }) {
                 Icon(
                     painter = painterResource(id = R.drawable.speaker),
-                    contentDescription = null,
-                    tint = if (soundEnabled) Color.White else Color.Gray,
+                    contentDescription = "Sound Options",
+                    tint = if (musicEnabled || sfxEnabled) Color.White else Color.Gray,
                     modifier = Modifier.size(30.dp)
+                )
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Nhạc nền") },
+                    onClick = {
+                        musicEnabled = !musicEnabled
+                        if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
+                        expanded = false
+                    },
+                    trailingIcon = { Checkbox(checked = musicEnabled, onCheckedChange = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("Hiệu ứng (Hit + Shoot)") },
+                    onClick = { sfxEnabled = !sfxEnabled; expanded = false },
+                    trailingIcon = { Checkbox(checked = sfxEnabled, onCheckedChange = null) }
                 )
             }
         }
@@ -449,40 +448,36 @@ fun GameScreen(
             Canvas(modifier = Modifier.size(width = 200.dp, height = 25.dp)) {
                 drawRoundRect(color = Color.Gray, size = size)
                 val ratio = planeHp.value / 1000f
-                drawRoundRect(
-                    color = Color.Green,
-                    size = Size(size.width * ratio, size.height)
-                )
+                drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
             }
         }
 
         // Draw monsters
         monsters.forEach { m ->
-            Image(
-                painter = painterResource(R.drawable.quaivat1),
-                contentDescription = null,
-                modifier = Modifier
-                    .absoluteOffset { IntOffset(m.x.roundToInt(), m.y.value.roundToInt()) }
-                    .size(80.dp),
-                contentScale = ContentScale.Fit
-            )
-            Canvas(
-                modifier = Modifier
-                    .absoluteOffset { IntOffset(m.x.roundToInt(), (m.y.value - 10f).roundToInt()) }
-                    .size(width = 80.dp, height = 5.dp)
-            ) {
-                drawRect(color = Color.Red, size = size)
-                val hpRatio = m.hp.value / 100f
-                drawRect(
-                    color = Color.Green,
-                    size = Size(size.width * hpRatio, size.height)
+            if (!isGameOver) {
+                Image(
+                    painter = painterResource(R.drawable.quaivat1),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(m.x.roundToInt(), m.y.value.roundToInt()) }
+                        .size(80.dp),
+                    contentScale = ContentScale.Fit
                 )
+                Canvas(
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(m.x.roundToInt(), (m.y.value - 10f).roundToInt()) }
+                        .size(width = 80.dp, height = 5.dp)
+                ) {
+                    drawRect(color = Color.Red, size = size)
+                    val hpRatio = m.hp.value / 100f
+                    drawRect(color = Color.Green, size = Size(size.width * hpRatio, size.height))
+                }
             }
         }
 
         // Draw coins
         coins.forEach { c ->
-            if (!c.collected.value) {
+            if (!c.collected.value && !isGameOver) {
                 Image(
                     painter = painterResource(R.drawable.coin),
                     contentDescription = null,
@@ -494,7 +489,7 @@ fun GameScreen(
             }
         }
 
-        // Draw bagcoin + số
+        // Draw bagCoins
         bagCoins.forEach { b ->
             Image(
                 painter = painterResource(R.drawable.bagcoin),
@@ -514,27 +509,50 @@ fun GameScreen(
 
         // Draw bullets
         bullets.forEach { b ->
+            if (!isGameOver) {
+                Image(
+                    painter = painterResource(R.drawable.dan2),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
+                        .size(30.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+
+        // Draw plane
+        if (!isGameOver) {
             Image(
-                painter = painterResource(R.drawable.dan2),
+                painter = painterResource(R.drawable.maybay1),
                 contentDescription = null,
                 modifier = Modifier
-                    .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                    .size(30.dp),
+                    .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }
+                    .size(100.dp),
                 contentScale = ContentScale.Fit
             )
         }
 
-        // Draw plane
-        Image(
-            painter = painterResource(R.drawable.maybay1),
-            contentDescription = null,
-            modifier = Modifier
-                .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }
-                .size(100.dp),
-            contentScale = ContentScale.Fit
-        )
+        // GAME OVER overlay
+        if (isGameOver) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xAA000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("GAME OVER", color = Color.Red, fontSize = 40.sp)
+                    Spacer(Modifier.height(20.dp))
+                    IconButton(onClick = { onExit() }) {
+                        Text("Thoát", color = Color.White, fontSize = 24.sp)
+                    }
+                }
+            }
+        }
     }
 }
+
 
 // ---------------------- BACKGROUND ----------------------
 @Composable
