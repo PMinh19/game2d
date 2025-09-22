@@ -3,7 +3,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Checkbox
-
+import androidx.compose.material3.Button
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -262,6 +262,7 @@ fun GameScreen(
                     if (planeHp.value <= 0) {
                         planeHp.value = 0
                         isGameOver = true
+
                     }
                 }
                 delay(16)
@@ -538,18 +539,23 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xAA000000)),
+                    .background(Color(0xAA000000)), // mờ nền
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("GAME OVER", color = Color.Red, fontSize = 40.sp)
-                    Spacer(Modifier.height(20.dp))
-                    IconButton(onClick = { onExit() }) {
-                        Text("Thoát", color = Color.White, fontSize = 24.sp)
+                    Text(
+                        text = "GAME OVER",
+                        color = Color.Red,
+                        fontSize = 36.sp
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { onExit() }) {
+                        Text(text = "Thoát", fontSize = 20.sp)
                     }
                 }
             }
         }
+
     }
 }
 

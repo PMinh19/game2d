@@ -6,7 +6,7 @@ import androidx.compose.material3.Checkbox
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
-
+import androidx.compose.material3.Button
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -119,9 +119,11 @@ data class MonsterState2(
     var y: MutableState<Float>,
     var speed: Float,
     var hp: MutableState<Int>,
-    var angle: Float = 0f,          // góc quay của quái
-    var radius: Float = 50f         // bán kính vòng tròn
+    var angle: Float = 0f,
+    var radius: Float = 50f,
+    var alive: MutableState<Boolean> = mutableStateOf(true)
 )
+
 data class MonsterGroup(
     var centerX: MutableState<Float>,
     var centerY: MutableState<Float>,
@@ -415,9 +417,14 @@ fun Level2Screen(
                     ) {
                         m.hp.value -= 20
                         playHitSound()
-                        if (m.hp.value <= 0) respawnMonster(m, screenWidthPx)
+                        if (m.hp.value <= 0) {
+                            m.hp.value = 0
+                            m.alive.value = false  // quái chết
+                            // Không respawn ngay
+                        }
                         bulletsToRemove.add(b)
                     }
+
                 }
             }
             bullets.removeAll(bulletsToRemove)
@@ -499,7 +506,7 @@ fun Level2Screen(
 
         // Monsters
         monsters.forEach { m ->
-            if (!isGameOver) {
+            if (!isGameOver && m.alive.value) {   // chỉ vẽ quái còn sống
                 Image(
                     painter = painterResource(R.drawable.quaivat1),
                     contentDescription = null,
@@ -519,6 +526,7 @@ fun Level2Screen(
                 }
             }
         }
+
 
         // Coins
         coins.forEach { c ->
@@ -578,23 +586,27 @@ fun Level2Screen(
             )
         }
 
-        // GAME OVER overlay
         if (isGameOver) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xAA000000)),
+                    .background(Color(0xAA000000)), // mờ nền
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("GAME OVER", color = Color.Red, fontSize = 40.sp)
-                    Spacer(Modifier.height(20.dp))
-                    IconButton(onClick = { onExit() }) {
-                        Text("Thoát", color = Color.White, fontSize = 24.sp)
+                    Text(
+                        text = "GAME OVER",
+                        color = Color.Red,
+                        fontSize = 36.sp
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { onExit() }) {
+                        Text(text = "Thoát", fontSize = 20.sp)
                     }
                 }
             }
         }
+
     }
 }
 
