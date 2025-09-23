@@ -41,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlin.random.Random
+import android.graphics.RectF
 
 class GameScreenActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
@@ -128,6 +129,9 @@ data class BagCoinDisplay(
     val y: Float,
     val score: Int
 )
+private fun getBoundingBox(x: Float, y: Float, width: Float, height: Float): RectF {
+    return RectF(x, y, x + width, y + height)
+}
 
 // ---------------------- HELPER FUNCTIONS ----------------------
 private fun respawnMonster(m: MonsterState, screenWidthPx: Float) {
@@ -140,7 +144,7 @@ private fun respawnMonster(m: MonsterState, screenWidthPx: Float) {
 private fun respawnCoin(c: Coin, screenWidthPx: Float) {
     c.y.value = -Random.nextInt(100, 600).toFloat()
     c.x = Random.nextFloat() * (screenWidthPx - 50f)
-    c.speed = Random.nextFloat() * 2f + 1f
+    c.speed = Random.nextFloat() * 0.5f + 0.5f
     c.collected.value = false
 }
 
@@ -151,13 +155,11 @@ private fun checkCollisionPlaneMonster(
     planeHeight: Float = 100f,
     monster: MonsterState
 ): Boolean {
-    val monsterWidth = 80f
-    val monsterHeight = 80f
-    return planeX < monster.x + monsterWidth &&
-            planeX + planeWidth > monster.x &&
-            planeY < monster.y.value + monsterHeight &&
-            planeY + planeHeight > monster.y.value
+    val planeBox = getBoundingBox(planeX, planeY, planeWidth, planeHeight)
+    val monsterBox = getBoundingBox(monster.x, monster.y.value, 80f, 80f)
+    return RectF.intersects(planeBox, monsterBox)
 }
+
 
 private fun checkCollisionPlaneCoin(
     planeX: Float,
@@ -166,13 +168,23 @@ private fun checkCollisionPlaneCoin(
     planeHeight: Float = 100f,
     coin: Coin
 ): Boolean {
-    val coinWidth = 40f
-    val coinHeight = 40f
-    return planeX < coin.x + coinWidth &&
-            planeX + planeWidth > coin.x &&
-            planeY < coin.y.value + coinHeight &&
-            planeY + planeHeight > coin.y.value
+    val planeBox = getBoundingBox(planeX, planeY, planeWidth, planeHeight)
+    val coinBox = getBoundingBox(coin.x, coin.y.value, 40f, 40f)
+    return RectF.intersects(planeBox, coinBox)
 }
+private fun checkCollisionBulletMonster(
+    bullet: Bullet,
+    monster: MonsterState,
+    bulletWidth: Float = 30f,
+    bulletHeight: Float = 30f,
+    monsterWidth: Float = 80f,
+    monsterHeight: Float = 80f
+): Boolean {
+    val bulletBox = getBoundingBox(bullet.x, bullet.y, bulletWidth, bulletHeight)
+    val monsterBox = getBoundingBox(monster.x, monster.y.value, monsterWidth, monsterHeight)
+    return RectF.intersects(bulletBox, monsterBox)
+}
+
 @Composable
 fun GameScreen(
     onExit: () -> Unit,
@@ -288,7 +300,7 @@ fun GameScreen(
                     c.y.value += c.speed
                     if (c.y.value > screenHeightPx + 50f) respawnCoin(c, screenWidthPx)
                 }
-                delay(16)
+                delay(32)
             }
         }
     }
@@ -313,15 +325,14 @@ fun GameScreen(
             while (bulletIterator.hasNext()) {
                 val b = bulletIterator.next()
                 monsters.forEach { m ->
-                    if (b.x in (m.x - 10f)..(m.x + 110f) &&
-                        b.y in (m.y.value - 10f)..(m.y.value + 110f)
-                    ) {
+                    if (checkCollisionBulletMonster(b, m)) {
                         m.hp.value -= 20
                         bulletIterator.remove()
                         playHitSound()
                         if (m.hp.value <= 0) respawnMonster(m, screenWidthPx)
                     }
                 }
+
             }
             delay(16)
         }
