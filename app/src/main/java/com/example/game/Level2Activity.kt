@@ -1,4 +1,5 @@
 package com.example.game
+import android.graphics.RectF
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -119,19 +120,17 @@ data class MonsterState2(
     var y: MutableState<Float>,
     var speed: Float,
     var hp: MutableState<Int>,
-    var angle: Float = 0f,
-    var radius: Float = 50f,
-    var alive: MutableState<Boolean> = mutableStateOf(true)
-)
+    var angle: Float,
+    var radius: Float,
+var alive: MutableState<Boolean> = mutableStateOf(true))
 
 data class MonsterGroup(
     var centerX: MutableState<Float>,
     var centerY: MutableState<Float>,
     var speedX: Float,
     var speedY: Float,
-    val monsters: List<MonsterState2>
-)
-
+    var monsters: List<MonsterState2>,
+   )
 data class Coin2(
     var x: Float,
     var y: MutableState<Float>,
@@ -150,7 +149,9 @@ private fun respawnMonster(m: MonsterState2, screenWidthPx: Float) {
     m.x = Random.nextFloat() * (screenWidthPx - 100f)
     m.speed = Random.nextFloat() * 1.5f + 1.5f
     m.hp.value = 100
+
 }
+
 
 private fun respawnCoin(c: Coin2, screenWidthPx: Float) {
     c.y.value = -Random.nextInt(100, 600).toFloat()
@@ -168,10 +169,11 @@ private fun checkCollisionPlaneMonster(
 ): Boolean {
     val monsterWidth = 80f
     val monsterHeight = 80f
-    return planeX < monster.x + monsterWidth &&
-            planeX + planeWidth > monster.x &&
-            planeY < monster.y.value + monsterHeight &&
-            planeY + planeHeight > monster.y.value
+
+    val planeRect = RectF(planeX, planeY, planeX + planeWidth, planeY + planeHeight)
+    val monsterRect = RectF(monster.x, monster.y.value, monster.x + monsterWidth, monster.y.value + monsterHeight)
+
+    return RectF.intersects(planeRect, monsterRect)
 }
 
 private fun checkCollisionPlaneCoin(
@@ -183,10 +185,25 @@ private fun checkCollisionPlaneCoin(
 ): Boolean {
     val coinWidth = 40f
     val coinHeight = 40f
-    return planeX < coin.x + coinWidth &&
-            planeX + planeWidth > coin.x &&
-            planeY < coin.y.value + coinHeight &&
-            planeY + planeHeight > coin.y.value
+
+    val planeRect = RectF(planeX, planeY, planeX + planeWidth, planeY + planeHeight)
+    val coinRect = RectF(coin.x, coin.y.value, coin.x + coinWidth, coin.y.value + coinHeight)
+
+    return RectF.intersects(planeRect, coinRect)
+}
+private fun checkCollisionBulletMonster(
+    bullet: Bullet2,
+    monster: MonsterState2
+): Boolean {
+    val bulletWidth = 30f
+    val bulletHeight = 30f
+    val monsterWidth = 80f
+    val monsterHeight = 80f
+
+    val bulletRect = RectF(bullet.x, bullet.y, bullet.x + bulletWidth, bullet.y + bulletHeight)
+    val monsterRect = RectF(monster.x, monster.y.value, monster.x + monsterWidth, monster.y.value + monsterHeight)
+
+    return RectF.intersects(bulletRect, monsterRect)
 }
 
 @Composable
@@ -211,6 +228,57 @@ fun Level2Screen(
     var expanded by remember { mutableStateOf(false) }
 
     var isGameOver by remember { mutableStateOf(false) }
+    var isLevelClear by remember { mutableStateOf(false) }
+    val monsterGroups = remember { mutableStateListOf<MonsterGroup>() }
+    val monsters = remember { mutableStateListOf<MonsterState2>() }
+
+// Giới hạn số lần spawn
+    var spawnCount by remember { mutableStateOf(0) }
+    val maxSpawnCount = 10
+
+    fun spawnMonsterGroup(centerX: Float, centerY: Float) {
+        val newMonsters = List(3) { i ->
+            MonsterState2(
+                x = centerX,
+                y = mutableStateOf(centerY),
+                speed = 0f, // tốc độ riêng của từng quái = 0 vì quái đi theo tâm
+                hp = mutableStateOf(100),
+                angle = (i * 2 * PI / 3).toFloat(),
+                radius = 150f
+            )
+        }
+
+        val group = MonsterGroup(
+            centerX = mutableStateOf(centerX),
+            centerY = mutableStateOf(centerY),
+            speedX = Random.nextFloat() * 4f - 2f,
+            speedY = Random.nextFloat() * 4f - 2f,
+            monsters = newMonsters
+        )
+
+        monsterGroups.add(group)
+        monsters.addAll(newMonsters)
+    }
+
+
+    fun startLevel(monsterGroups: MutableList<MonsterGroup>, monsters: MutableList<MonsterState2>) {
+        monsters.clear()
+        monsterGroups.clear()
+        isLevelClear = false
+    }
+
+
+    LaunchedEffect(Unit) {
+        startLevel(monsterGroups, monsters)
+        repeat(10) { i ->
+            val cx = Random.nextFloat() * (screenWidthPx - 300f) + 150f
+            val cy = Random.nextFloat() * 400f + 100f
+            spawnMonsterGroup(cx, cy)
+            delay(3000)
+        }
+    }
+
+
 
     // Load score từ Firebase
     LaunchedEffect(playerName) {
@@ -240,12 +308,12 @@ fun Level2Screen(
     val planeHp = remember { mutableStateOf(1000) }
 
     // Bullets
-    val bullets = remember { mutableStateListOf<Bullet>() }
+    val bullets = remember { mutableStateListOf<Bullet2>() }
 
     LaunchedEffect(Unit) {
         while (!isGameOver) {
-            bullets.add(Bullet(planeX - 20f, planeY))
-            bullets.add(Bullet(planeX + 20f, planeY))
+            bullets.add(Bullet2(planeX - 20f, planeY))
+            bullets.add(Bullet2(planeX + 20f, planeY))
             if (sfxEnabled) soundPool.play(shootSoundId, 0.5f, 0.5f, 1, 0, 1f)
             delay(350)
         }
@@ -260,36 +328,7 @@ fun Level2Screen(
     }
 
     // Monsters
-    val monsterGroups = remember {
-        List(6) {
-            val centerX = mutableStateOf(Random.nextFloat() * (screenWidthPx - 100f))
-            val centerY = mutableStateOf(Random.nextFloat() * 200f)
-            val speedX = Random.nextFloat() * 4f - 2f
-            val speedY = Random.nextFloat() * 3f + 1f
-            MonsterGroup(
-                centerX = centerX,
-                centerY = centerY,
-                speedX = speedX,
-                speedY = speedY,
-                monsters = List(3) {
-                    MonsterState2(
-                        x = centerX.value,
-                        y = mutableStateOf(centerY.value),
-                        speed = 0f,
-                        hp = mutableStateOf(100),
-                        angle = Random.nextFloat() * 2 * PI.toFloat(),
-                        radius = 50f
-                    )
-                }
-            )
-        }
-    }
 
-    val monsters = remember {
-        mutableStateListOf<MonsterState2>().apply {
-            monsterGroups.forEach { group -> addAll(group.monsters) }
-        }
-    }
 
     monsterGroups.forEach { group ->
         LaunchedEffect(group) {
@@ -301,11 +340,11 @@ fun Level2Screen(
                 if (group.centerY.value < 0 || group.centerY.value > screenHeightPx - 200f) group.speedY *= -1
 
                 group.monsters.forEachIndexed { i, m ->
-                    val angle = m.angle + 0.05f
-                    m.angle = angle
-                    m.x = group.centerX.value + m.radius * cos(angle + i * 2 * PI / 3).toFloat()
-                    m.y.value = group.centerY.value + m.radius * sin(angle + i * 2 * PI / 3).toFloat()
+                    m.angle += 0.05f // tốc độ quay
+                    m.x = group.centerX.value + m.radius * cos(m.angle + i * 2 * PI / 3).toFloat()
+                    m.y.value = group.centerY.value + m.radius * sin(m.angle + i * 2 * PI / 3).toFloat()
                 }
+
 
                 delay(16)
             }
@@ -348,32 +387,34 @@ fun Level2Screen(
         }
     }
 
-    // Collision plane ↔ monsters
+
+    // ==================== COLLISIONS ====================
     LaunchedEffect(Unit) {
         while (!isGameOver) {
+            val bulletsToRemove = mutableListOf<Bullet2>()
+
+            // Plane ↔ Monster
             monsters.forEach { m ->
-                if (checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)) {
-                    planeHp.value -= 50
+                if (m.alive.value && checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)) {
+                    println("💥 Plane hit Monster!")
+                    planeHp.value -= 20
                     if (planeHp.value <= 0) {
                         planeHp.value = 0
                         isGameOver = true
                     }
+                    m.alive.value = false
                     respawnMonster(m, screenWidthPx)
                 }
             }
-            delay(200)
-        }
-    }
 
-    // Collision plane ↔ coins
-    LaunchedEffect(Unit) {
-        while (!isGameOver) {
+            // Plane ↔ Coin
             coins.forEach { c ->
                 if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
+                    println("💰 Plane collected Coin!")
                     c.collected.value = true
                     totalScore.value += 1
 
-                    // Upload score to Firebase
+                    // Upload score lên Firebase
                     if (!playerName.isNullOrBlank()) {
                         db.collection("rankings")
                             .whereEqualTo("name", playerName)
@@ -391,46 +432,47 @@ fun Level2Screen(
                             }
                     }
 
-                    val bag = BagCoinDisplay2(c.x, c.y.value, totalScore.value)
-                    bagCoins.add(bag)
-                    coroutineScope.launch { delay(1000); bagCoins.remove(bag) }
+                    // Hiển thị BagCoin
+                    val bag =BagCoinDisplay2(c.x, c.y.value, totalScore.value)
 
-                    respawnCoin(c, screenWidthPx)
+                    bagCoins.add(bag)
+
+                    coroutineScope.launch {
+                        delay(1000)                   // BagCoin tồn tại 1 giây
+                        bagCoins.remove(bag)
+                        respawnCoin(c, screenWidthPx) // Sau đó mới respawn coin mới
+                    }
                 }
             }
-            delay(50)
-        }
-    }
 
-    // Collision bullets ↔ monsters
-    LaunchedEffect(Unit) {
-        while (!isGameOver) {
-            val bulletsToRemove = mutableListOf<Bullet>()
-            monsters.forEach { m ->
-                bullets.forEach { b ->
-                    val monsterWidth = 80f
-                    val monsterHeight = 80f
-                    if (b.x < m.x + monsterWidth &&
-                        b.x + 30f > m.x &&
-                        b.y < m.y.value + monsterHeight &&
-                        b.y + 30f > m.y.value
-                    ) {
+            // Bullet ↔ Monster
+            bullets.toList().forEach { b ->
+                monsters.forEach { m ->
+                    if (m.alive.value && checkCollisionBulletMonster(b, m)) {
+                        println("🔫 Bullet hit Monster!")
                         m.hp.value -= 20
+                        bulletsToRemove.add(b)
                         playHitSound()
                         if (m.hp.value <= 0) {
                             m.hp.value = 0
-                            m.alive.value = false  // quái chết
-                            // Không respawn ngay
-                        }
-                        bulletsToRemove.add(b)
-                    }
+                            m.alive.value = false
 
+                        }
+                    }
                 }
             }
             bullets.removeAll(bulletsToRemove)
-            delay(16)
+// Bullet ↔ Monster loop xong
+            if (monsters.isNotEmpty() && monsters.none { it.alive.value }) {
+                isLevelClear = true
+            }
+
+            delay(16) // ~60fps
         }
     }
+
+
+
 
     // ------------------ UI ------------------
     Box(
@@ -606,7 +648,32 @@ fun Level2Screen(
                 }
             }
         }
-
+        if (isLevelClear) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xAA000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "🎉 Chúc mừng bạn đã chiến thắng! 🎉",
+                        color = Color.Green,
+                        fontSize = 32.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Bạn thu được ${totalScore.value} xu",
+                        color = Color.Yellow,
+                        fontSize = 24.sp
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { onExit() }) {
+                        Text(text = "Thoát", fontSize = 20.sp)
+                    }
+                }
+            }
+        }
     }
 }
 

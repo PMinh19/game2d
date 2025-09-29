@@ -40,6 +40,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlin.math.abs
 import kotlin.random.Random
 import android.graphics.RectF
 
@@ -112,33 +113,73 @@ class GameScreenActivity : ComponentActivity() {
 
 // ---------------------- DATA CLASSES ----------------------
 data class Bullet(var x: Float, var y: Float)
+
 data class MonsterState(
     var x: Float,
     var y: MutableState<Float>,
     var speed: Float,
-    var hp: MutableState<Int>
+    var hp: MutableState<Int>,
+    var respawnCount: Int = 0,
+    val maxRespawn: Int = 10,
+    var isDying: MutableState<Boolean> = mutableStateOf(false),
+    var isRespawning: MutableState<Boolean> = mutableStateOf(false)
 )
+
 data class Coin(
     var x: Float,
     var y: MutableState<Float>,
     var speed: Float,
     var collected: MutableState<Boolean> = mutableStateOf(false)
 )
+
 data class BagCoinDisplay(
     val x: Float,
     val y: Float,
     val score: Int
 )
+
 private fun getBoundingBox(x: Float, y: Float, width: Float, height: Float): RectF {
     return RectF(x, y, x + width, y + height)
 }
 
 // ---------------------- HELPER FUNCTIONS ----------------------
-private fun respawnMonster(m: MonsterState, screenWidthPx: Float) {
-    m.y.value = -Random.nextInt(200, 600).toFloat()
-    m.x = Random.nextFloat() * (screenWidthPx - 100f)
-    m.speed = Random.nextFloat() * 1.5f + 1.5f
-    m.hp.value = 100
+private suspend fun respawnMonster(m: MonsterState, screenWidthPx: Float, planeX: Float) {
+    if (m.respawnCount < m.maxRespawn && !m.isRespawning.value) {
+        m.isRespawning.value = true
+        m.isDying.value = true
+
+        // Delay để tránh respawn ngay lập tức
+        delay(300)
+
+        // Reset vị trí y
+        m.y.value = -Random.nextInt(200, 800).toFloat()
+
+        // Đảm bảo quái không tái sinh gần máy bay (tối thiểu 200px)
+        var attempts = 0
+        do {
+            m.x = Random.nextFloat() * (screenWidthPx - 100f)
+            attempts++
+        } while (abs(m.x - planeX) < 200f && attempts < 10)
+
+        // Nếu sau 10 lần thử vẫn không tìm được vị trí an toàn, đặt ở góc
+        if (attempts >= 10) {
+            m.x = if (planeX > screenWidthPx / 2) 50f else screenWidthPx - 150f
+        }
+
+        m.speed = Random.nextFloat() * 1.5f + 1.5f
+        m.hp.value = 100
+        m.respawnCount++
+
+        // Delay thêm để đảm bảo quái đã ở vị trí mới
+        delay(100)
+
+        m.isDying.value = false
+        m.isRespawning.value = false
+    } else {
+        m.hp.value = 0
+        m.y.value = screenWidthPx * 2  // đưa ra khỏi màn hình
+        m.isDying.value = true
+    }
 }
 
 private fun respawnCoin(c: Coin, screenWidthPx: Float) {
@@ -155,11 +196,12 @@ private fun checkCollisionPlaneMonster(
     planeHeight: Float = 100f,
     monster: MonsterState
 ): Boolean {
+    if (monster.isDying.value || monster.isRespawning.value || monster.hp.value <= 0) return false
+
     val planeBox = getBoundingBox(planeX, planeY, planeWidth, planeHeight)
     val monsterBox = getBoundingBox(monster.x, monster.y.value, 80f, 80f)
     return RectF.intersects(planeBox, monsterBox)
 }
-
 
 private fun checkCollisionPlaneCoin(
     planeX: Float,
@@ -172,6 +214,7 @@ private fun checkCollisionPlaneCoin(
     val coinBox = getBoundingBox(coin.x, coin.y.value, 40f, 40f)
     return RectF.intersects(planeBox, coinBox)
 }
+
 private fun checkCollisionBulletMonster(
     bullet: Bullet,
     monster: MonsterState,
@@ -180,6 +223,8 @@ private fun checkCollisionBulletMonster(
     monsterWidth: Float = 80f,
     monsterHeight: Float = 80f
 ): Boolean {
+    if (monster.isDying.value || monster.isRespawning.value || monster.hp.value <= 0) return false
+
     val bulletBox = getBoundingBox(bullet.x, bullet.y, bulletWidth, bulletHeight)
     val monsterBox = getBoundingBox(monster.x, monster.y.value, monsterWidth, monsterHeight)
     return RectF.intersects(bulletBox, monsterBox)
@@ -201,7 +246,7 @@ fun GameScreen(
     val db = FirebaseFirestore.getInstance()
     val playerName = PrefManager.getPlayerName(LocalContext.current)
 
-    var musicEnabled by remember { mutableStateOf(true) }   // Nhạc nền
+    var musicEnabled by remember { mutableStateOf(true) }
     var sfxEnabled by remember { mutableStateOf(true) }
     val totalScore = remember { mutableStateOf(0) }
     var expanded by remember { mutableStateOf(false) }
@@ -264,17 +309,19 @@ fun GameScreen(
             )
         }
     }
+
     monsters.forEach { m ->
         LaunchedEffect(m) {
             while (!isGameOver) {
-                m.y.value += m.speed
-                if (m.y.value > screenHeightPx + 100f && m.hp.value > 0) {
-                    respawnMonster(m, screenWidthPx)
-                    planeHp.value -= 50
-                    if (planeHp.value <= 0) {
-                        planeHp.value = 0
-                        isGameOver = true
-
+                if (!m.isDying.value && !m.isRespawning.value && m.hp.value > 0) {
+                    m.y.value += m.speed
+                    if (m.y.value > screenHeightPx + 100f) {
+                        respawnMonster(m, screenWidthPx, planeX)
+                        planeHp.value -= 50
+                        if (planeHp.value <= 0) {
+                            planeHp.value = 0
+                            isGameOver = true
+                        }
                     }
                 }
                 delay(16)
@@ -318,6 +365,8 @@ fun GameScreen(
         }
     }
 
+    var isLevelClear by remember { mutableStateOf(false) }
+
     // Collision bullets ↔ monsters
     LaunchedEffect(Unit) {
         while (!isGameOver) {
@@ -329,11 +378,21 @@ fun GameScreen(
                         m.hp.value -= 20
                         bulletIterator.remove()
                         playHitSound()
-                        if (m.hp.value <= 0) respawnMonster(m, screenWidthPx)
+
+                        if (m.hp.value <= 0) {
+                            coroutineScope.launch {
+                                respawnMonster(m, screenWidthPx, planeX)
+                            }
+                        }
                     }
                 }
-
             }
+
+            // Check level clear
+            if (monsters.all { it.hp.value <= 0 && it.respawnCount >= it.maxRespawn }) {
+                isLevelClear = true
+            }
+
             delay(16)
         }
     }
@@ -348,7 +407,9 @@ fun GameScreen(
                         planeHp.value = 0
                         isGameOver = true
                     }
-                    respawnMonster(m, screenWidthPx)
+                    coroutineScope.launch {
+                        respawnMonster(m, screenWidthPx, planeX)
+                    }
                 }
             }
             delay(200)
@@ -464,9 +525,9 @@ fun GameScreen(
             }
         }
 
-        // Draw monsters
+        // Draw monsters (chỉ hiển thị khi không đang dying/respawning)
         monsters.forEach { m ->
-            if (!isGameOver) {
+            if (!isGameOver && !m.isDying.value && m.hp.value > 0) {
                 Image(
                     painter = painterResource(R.drawable.quaivat1),
                     contentDescription = null,
@@ -567,9 +628,34 @@ fun GameScreen(
             }
         }
 
+        if (isLevelClear) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xAA000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "🎉 Chúc mừng bạn đã chiến thắng! 🎉",
+                        color = Color.Green,
+                        fontSize = 32.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Bạn thu được ${totalScore.value} xu",
+                        color = Color.Yellow,
+                        fontSize = 24.sp
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { onExit() }) {
+                        Text(text = "Thoát", fontSize = 20.sp)
+                    }
+                }
+            }
+        }
     }
 }
-
 
 // ---------------------- BACKGROUND ----------------------
 @Composable
@@ -604,6 +690,7 @@ fun MovingBackgroundOffset(screenWidthPx: Float) {
         )
     }
 }
+
 private fun uploadScoreToFirebase(playerName: String, score: Int) {
     val db = FirebaseFirestore.getInstance()
     db.collection("rankings")
