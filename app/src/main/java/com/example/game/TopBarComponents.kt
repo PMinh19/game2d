@@ -13,6 +13,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+// ----- Chest item model -----
+data class ChestItem(val name: String, val resId: Int)
+
+// ----- BagCoin -----
 @Composable
 fun BagCoinDisplay(bagCoinScore: Int) {
     Box(
@@ -33,8 +37,9 @@ fun BagCoinDisplay(bagCoinScore: Int) {
     }
 }
 
+// ----- Chest -----
 @Composable
-fun ChestDisplay(chestItems: List<String>) {
+fun ChestDisplay(chestItems: List<ChestItem>) {
     val showChestDialog = remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
@@ -56,22 +61,38 @@ fun ChestDisplay(chestItems: List<String>) {
             text = {
                 Column {
                     if (chestItems.isEmpty()) Text("Chest trống")
-                    else chestItems.forEach { item -> Text(item) }
+                    else chestItems.forEach { item ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(item.resId),
+                                contentDescription = item.name,
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(item.name)
+                        }
+                    }
                 }
             },
-            confirmButton = { Button(onClick = { showChestDialog.value = false }) { Text("OK") } }
+            confirmButton = {
+                Button(onClick = { showChestDialog.value = false }) { Text("OK") }
+            }
         )
     }
 }
 
+// ----- Store -----
 @Composable
 fun StoreDisplay(
     bagCoinScore: Int,
-    chestItems: MutableList<String>,
-    onBuyItem: (itemName: String, price: Int) -> Unit
+    onBuyItem: (ChestItem, Int) -> Unit
 ) {
     val showStoreDialog = remember { mutableStateOf(false) }
-    val showConfirmBuyDialog = remember { mutableStateOf<Pair<String, Int>?>(null) }
+    val showConfirmBuyDialog = remember { mutableStateOf<Pair<ChestItem, Int>?>(null) }
+    val context = LocalContext.current
 
     Box(
         modifier = Modifier
@@ -86,17 +107,18 @@ fun StoreDisplay(
         )
     }
 
+    val itemsForSale = listOf(
+        ChestItem("Fireworks", R.drawable.fireworks) to 5,
+        ChestItem("Firework2", R.drawable.firework2) to 5
+    )
+
     if (showStoreDialog.value) {
         AlertDialog(
             onDismissRequest = { showStoreDialog.value = false },
             title = { Text("Store") },
             text = {
                 Column {
-                    val items = listOf(
-                        Triple("Fireworks", R.drawable.fireworks, 20),
-                        Triple("Firework2", R.drawable.firework2, 20)
-                    )
-                    items.forEach { (name, res, price) ->
+                    itemsForSale.forEach { (item, price) ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -104,52 +126,57 @@ fun StoreDisplay(
                                 .padding(vertical = 4.dp)
                         ) {
                             Image(
-                                painter = painterResource(res),
-                                contentDescription = name,
+                                painter = painterResource(item.resId),
+                                contentDescription = item.name,
                                 modifier = Modifier.size(50.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("$price Coins")
                             Spacer(modifier = Modifier.weight(1f))
-                            Button(onClick = { showConfirmBuyDialog.value = Pair(name, price) }) {
+                            Button(onClick = { showConfirmBuyDialog.value = item to price }) {
                                 Text("Mua")
                             }
                         }
                     }
                 }
             },
-            confirmButton = { Button(onClick = { showStoreDialog.value = false }) { Text("Close") } }
+            confirmButton = {
+                Button(onClick = { showStoreDialog.value = false }) { Text("Close") }
+            }
         )
     }
 
-    showConfirmBuyDialog.value?.let { (itemName, itemPrice) ->
-        val context = LocalContext.current
+    // Confirm buy dialog
+    showConfirmBuyDialog.value?.let { (item, price) ->
         AlertDialog(
             onDismissRequest = { showConfirmBuyDialog.value = null },
-            title = { Text("Mua $itemName?") },
-            text = { Text("Bạn có muốn mua $itemName với $itemPrice Coins không?") },
+            title = { Text("Mua ${item.name}?") },
+            text = { Text("Bạn có muốn mua ${item.name} với $price Coins không?") },
             confirmButton = {
                 Button(onClick = {
-                    if (bagCoinScore >= itemPrice) {
-                        onBuyItem(itemName, itemPrice)
+                    if (bagCoinScore >= price) {
+                        onBuyItem(item, price)
+                        Toast.makeText(context, "Mua ${item.name} thành công!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Không đủ coins để mua $itemName", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Không đủ coins để mua ${item.name}", Toast.LENGTH_SHORT).show()
                     }
                     showConfirmBuyDialog.value = null
                     showStoreDialog.value = false
                 }) { Text("Yes") }
             },
-            dismissButton = { Button(onClick = { showConfirmBuyDialog.value = null }) { Text("No") } }
+            dismissButton = {
+                Button(onClick = { showConfirmBuyDialog.value = null }) { Text("No") }
+            }
         )
     }
 }
 
+// ----- TopBar -----
 @Composable
-fun TopBarUI(
-    bagCoinScore: Int,
-    chestItems: List<String>,
-    onBuyItem: (itemName: String, price: Int) -> Unit
-) {
+fun TopBarUI() {
+    var bagCoinScore by remember { mutableStateOf(10) }
+    var chestItems by remember { mutableStateOf(listOf<ChestItem>()) }
+
     Column(
         modifier = Modifier
             .padding(top = 16.dp, start = 16.dp)
@@ -157,7 +184,10 @@ fun TopBarUI(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.Start
     ) {
-        StoreDisplay(bagCoinScore, chestItems.toMutableList(), onBuyItem)
+        StoreDisplay(bagCoinScore) { item, price ->
+            bagCoinScore -= price
+            chestItems = chestItems + item
+        }
         ChestDisplay(chestItems)
         BagCoinDisplay(bagCoinScore)
     }

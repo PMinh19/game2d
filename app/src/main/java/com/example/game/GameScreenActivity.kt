@@ -43,7 +43,7 @@ import kotlin.math.roundToInt
 import kotlin.math.abs
 import kotlin.random.Random
 import android.graphics.RectF
-
+import com.example.game.FirebaseHelper
 class GameScreenActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private lateinit var soundPool: android.media.SoundPool
@@ -229,7 +229,6 @@ private fun checkCollisionBulletMonster(
     val monsterBox = getBoundingBox(monster.x, monster.y.value, monsterWidth, monsterHeight)
     return RectF.intersects(bulletBox, monsterBox)
 }
-
 @Composable
 fun GameScreen(
     onExit: () -> Unit,
@@ -248,22 +247,28 @@ fun GameScreen(
 
     var musicEnabled by remember { mutableStateOf(true) }
     var sfxEnabled by remember { mutableStateOf(true) }
-    val totalScore = remember { mutableStateOf(0) }
+    var totalScore by remember { mutableStateOf(0) }
     var expanded by remember { mutableStateOf(false) }
     var isGameOver by remember { mutableStateOf(false) }
+
+    // Chest state
+    var chestItems by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showChest by remember { mutableStateOf(false) }
 
     // Load score từ Firebase
     LaunchedEffect(playerName) {
         if (!playerName.isNullOrBlank()) {
-            db.collection("rankings")
-                .whereEqualTo("name", playerName)
-                .get()
-                .addOnSuccessListener { docs ->
-                    if (!docs.isEmpty) {
-                        val score = docs.documents[0].getLong("score") ?: 0
-                        totalScore.value = score.toInt()
-                    }
-                }
+            FirebaseHelper.syncNewPlayer(playerName)
+
+            FirebaseHelper.getScore(playerName) { score ->
+                totalScore = score
+            }
+
+            FirebaseHelper.getChestItems(playerName) { items ->
+                chestItems = items
+            }
+            FirebaseHelper.updateChest(playerName, chestItems)
+            FirebaseHelper.updateScore(playerName, totalScore)
         }
     }
 
@@ -422,7 +427,7 @@ fun GameScreen(
             coins.forEach { c ->
                 if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
                     c.collected.value = true
-                    totalScore.value += 1
+                    totalScore += 1
 
                     // Upload score
                     if (!playerName.isNullOrBlank()) {
@@ -433,16 +438,16 @@ fun GameScreen(
                                 if (!docs.isEmpty) {
                                     val docId = docs.documents[0].id
                                     db.collection("rankings").document(docId)
-                                        .update("score", totalScore.value)
+                                        .update("score", totalScore)
                                 } else {
                                     db.collection("rankings").add(
-                                        hashMapOf("name" to playerName, "score" to totalScore.value)
+                                        hashMapOf("name" to playerName, "score" to totalScore)
                                     )
                                 }
                             }
                     }
 
-                    val bag = BagCoinDisplay(c.x, c.y.value, totalScore.value)
+                    val bag = BagCoinDisplay(c.x, c.y.value, totalScore)
                     bagCoins.add(bag)
                     coroutineScope.launch { delay(1000); bagCoins.remove(bag) }
 
@@ -455,7 +460,7 @@ fun GameScreen(
 
     // ------------------ UI ------------------
     Box(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
@@ -464,68 +469,36 @@ fun GameScreen(
                 }
             }
     ) {
-        MovingBackgroundOffset(screenWidthPx)
-
-        val context = LocalContext.current
-        IconButton(
-            onClick = {
-                val playerName = PrefManager.getPlayerName(context)
-                if (!playerName.isNullOrBlank()) uploadScoreToFirebase(playerName, totalScore.value)
-                onExit()
-            },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp)
-        ) {
-            Icon(painterResource(R.drawable.ic_close), contentDescription = "Exit")
-        }
-
-        // Sound menu
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 70.dp, end = 16.dp)
-        ) {
-            IconButton(onClick = { expanded = true }) {
-                Icon(
-                    painter = painterResource(id = R.drawable.speaker),
-                    contentDescription = "Sound Options",
-                    tint = if (musicEnabled || sfxEnabled) Color.White else Color.Gray,
-                    modifier = Modifier.size(30.dp)
-                )
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(
-                    text = { Text("Nhạc nền") },
-                    onClick = {
-                        musicEnabled = !musicEnabled
-                        if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
-                        expanded = false
-                    },
-                    trailingIcon = { Checkbox(checked = musicEnabled, onCheckedChange = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Hiệu ứng (Hit + Shoot)") },
-                    onClick = { sfxEnabled = !sfxEnabled; expanded = false },
-                    trailingIcon = { Checkbox(checked = sfxEnabled, onCheckedChange = null) }
+        // Moving background (layer 1)
+        val bg = painterResource(R.drawable.nenms)
+        val offsetX = remember { Animatable(0f) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                offsetX.snapTo(0f)
+                offsetX.animateTo(
+                    targetValue = -screenWidthPx,
+                    animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
                 )
             }
         }
-
-        // Health bar
-        Box(
+        Image(
+            painter = bg,
+            contentDescription = null,
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 116.dp, end = 16.dp)
-        ) {
-            Canvas(modifier = Modifier.size(width = 200.dp, height = 25.dp)) {
-                drawRoundRect(color = Color.Gray, size = size)
-                val ratio = planeHp.value / 1000f
-                drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
-            }
-        }
+                .fillMaxSize()
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) },
+            contentScale = ContentScale.Crop
+        )
+        Image(
+            painter = bg,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset((offsetX.value + screenWidthPx).roundToInt(), 0) },
+            contentScale = ContentScale.Crop
+        )
 
-        // Draw monsters (chỉ hiển thị khi không đang dying/respawning)
+        // Draw monsters
         monsters.forEach { m ->
             if (!isGameOver && !m.isDying.value && m.hp.value > 0) {
                 Image(
@@ -606,12 +579,115 @@ fun GameScreen(
             )
         }
 
+        // TopBarUI - layer trên cùng với positioning tuyệt đối
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+        ) {
+            TopBarUI(
+                bagCoinScore = totalScore,
+                chestItems = chestItems,
+                onBuyItem = { itemName, price ->
+                    if (totalScore >= price) {
+                        totalScore -= price
+                        chestItems = chestItems + itemName
+
+                        if (!playerName.isNullOrBlank()) {
+                            FirebaseHelper.updateScore(playerName, totalScore)
+                            FirebaseHelper.updateChest(playerName, chestItems)
+                        }
+                    }
+                }
+            )
+        }
+
+        // Exit button
+        val context = LocalContext.current
+        IconButton(
+            onClick = {
+                val playerName = PrefManager.getPlayerName(context)
+                if (!playerName.isNullOrBlank()) {
+                    db.collection("rankings")
+                        .whereEqualTo("name", playerName)
+                        .get()
+                        .addOnSuccessListener { docs ->
+                            if (!docs.isEmpty) {
+                                val docId = docs.documents[0].id
+                                db.collection("rankings").document(docId)
+                                    .update("score", totalScore)
+                            } else {
+                                val playerData = hashMapOf(
+                                    "name" to playerName,
+                                    "score" to totalScore
+                                )
+                                db.collection("rankings").add(playerData)
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            Log.w("Firebase", "Failed to upload score", e)
+                        }
+                }
+                onExit()
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 16.dp)
+        ) {
+            Icon(painterResource(R.drawable.ic_close), contentDescription = "Exit")
+        }
+
+        // Sound menu
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 70.dp, end = 16.dp)
+        ) {
+            IconButton(onClick = { expanded = true }) {
+                Icon(
+                    painter = painterResource(id = R.drawable.speaker),
+                    contentDescription = "Sound Options",
+                    tint = if (musicEnabled || sfxEnabled) Color.White else Color.Gray,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Nhạc nền") },
+                    onClick = {
+                        musicEnabled = !musicEnabled
+                        if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
+                        expanded = false
+                    },
+                    trailingIcon = { Checkbox(checked = musicEnabled, onCheckedChange = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("Hiệu ứng (Hit + Shoot)") },
+                    onClick = { sfxEnabled = !sfxEnabled; expanded = false },
+                    trailingIcon = { Checkbox(checked = sfxEnabled, onCheckedChange = null) }
+                )
+            }
+        }
+
+        // Health bar
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 116.dp, end = 16.dp)
+        ) {
+            Canvas(modifier = Modifier.size(width = 200.dp, height = 25.dp)) {
+                drawRoundRect(color = Color.Gray, size = size)
+                val ratio = planeHp.value / 1000f
+                drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
+            }
+        }
+
         // GAME OVER overlay
         if (isGameOver) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xAA000000)), // mờ nền
+                    .background(Color(0xAA000000)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -643,7 +719,7 @@ fun GameScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Bạn thu được ${totalScore.value} xu",
+                        text = "Bạn thu được ${totalScore} xu",
                         color = Color.Yellow,
                         fontSize = 24.sp
                     )
@@ -654,63 +730,26 @@ fun GameScreen(
                 }
             }
         }
-    }
-}
 
-// ---------------------- BACKGROUND ----------------------
-@Composable
-fun MovingBackgroundOffset(screenWidthPx: Float) {
-    val bg = painterResource(R.drawable.nenms)
-    val offsetX = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            offsetX.snapTo(0f)
-            offsetX.animateTo(
-                targetValue = -screenWidthPx,
-                animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
-            )
-        }
-    }
-    Box(Modifier.fillMaxSize()) {
-        Image(
-            painter = bg,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset(offsetX.value.roundToInt(), 0) },
-            contentScale = ContentScale.Crop
-        )
-        Image(
-            painter = bg,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset((offsetX.value + screenWidthPx).roundToInt(), 0) },
-            contentScale = ContentScale.Crop
-        )
-    }
-}
-
-private fun uploadScoreToFirebase(playerName: String, score: Int) {
-    val db = FirebaseFirestore.getInstance()
-    db.collection("rankings")
-        .whereEqualTo("name", playerName)
-        .get()
-        .addOnSuccessListener { docs ->
-            if (!docs.isEmpty) {
-                val docId = docs.documents[0].id
-                db.collection("rankings").document(docId)
-                    .update("score", score)
-            } else {
-                // Nếu chưa có, thêm mới
-                val playerData = hashMapOf(
-                    "name" to playerName,
-                    "score" to score
-                )
-                db.collection("rankings").add(playerData)
+        if (showChest) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xAA000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("🎁 Chest của bạn 🎁", fontSize = 24.sp, color = Color.Yellow)
+                    Spacer(Modifier.height(16.dp))
+                    chestItems.forEach { item ->
+                        Text(text = "- $item", fontSize = 18.sp, color = Color.White)
+                    }
+                    Spacer(Modifier.height(24.dp))
+                    Button(onClick = { showChest = false }) {
+                        Text("Đóng")
+                    }
+                }
             }
         }
-        .addOnFailureListener { e ->
-            Log.w("Firebase", "Failed to upload score", e)
-        }
+    }
 }
