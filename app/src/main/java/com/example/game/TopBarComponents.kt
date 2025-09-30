@@ -165,7 +165,7 @@ fun StoreDisplay(
         AlertDialog(
             onDismissRequest = { showConfirmBuyDialog.value = null },
             title = { Text("Mua ${item.name}?") },
-            text = { Text("Bạn có muốn mua ${item.name} với $price Coins không?") },
+            text = { Text("Bạn có muốn mua ${item.name} với $price xu không?") },
             confirmButton = {
                 Button(onClick = {
                     if (bagCoinScore >= price) {
@@ -176,10 +176,10 @@ fun StoreDisplay(
                     }
                     showConfirmBuyDialog.value = null
                     showStoreDialog.value = false
-                }) { Text("Yes") }
+                }) { Text("Có") }
             },
             dismissButton = {
-                Button(onClick = { showConfirmBuyDialog.value = null }) { Text("No") }
+                Button(onClick = { showConfirmBuyDialog.value = null }) { Text("Không") }
             }
         )
     }

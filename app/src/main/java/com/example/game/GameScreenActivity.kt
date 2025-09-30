@@ -44,6 +44,8 @@ import kotlin.math.roundToInt
 import kotlin.math.abs
 import kotlin.random.Random
 import android.graphics.RectF
+
+
 import com.example.game.FirebaseHelper
 class GameScreenActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
@@ -263,6 +265,7 @@ fun GameScreen(
     var showChest by remember { mutableStateOf(false) }
     var timeActive by remember { mutableStateOf(false) }
     var timeTimeLeft by remember { mutableStateOf(0f) }
+    var currentSessionScore by remember { mutableStateOf(0) }
 
     // Load score từ Firebase
     LaunchedEffect(playerName) {
@@ -276,7 +279,7 @@ fun GameScreen(
             FirebaseHelper.getChestItems(playerName) { items ->
                 chestItems = items
             }
-            FirebaseHelper.updateScore(playerName, totalScore)
+
         }
     }
 
@@ -341,7 +344,7 @@ fun GameScreen(
                         if (m.y.value > screenHeightPx + 100f) {
                             respawnMonster(m, screenWidthPx, planeX)
                             if (!shieldActive) {
-                                planeHp.value -= 50
+                                planeHp.value -= 600
                                 if (planeHp.value <= 0) {
                                     planeHp.value = 0
                                     isGameOver = true
@@ -508,7 +511,7 @@ fun GameScreen(
             monsters.forEach { m ->
                 if (checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)) {
                     if (!shieldActive) {
-                        planeHp.value -= 50
+                        planeHp.value -= 600
                         if (planeHp.value <= 0) {
                             planeHp.value = 0
                             isGameOver = true
@@ -530,7 +533,7 @@ fun GameScreen(
                 if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
                     c.collected.value = true
                     totalScore += 1
-
+                    currentSessionScore += 1
                     // Upload score
                     if (!playerName.isNullOrBlank()) {
                         db.collection("rankings")
@@ -573,34 +576,41 @@ fun GameScreen(
             .fillMaxSize()
             .then(dragModifier)
     ) {
-        // Moving background (layer 1)
-        val bg = painterResource(R.drawable.nenms)
-        val offsetX = remember { Animatable(0f) }
+        val bg = painterResource(R.drawable.nen2)
+        val offsetY = remember { Animatable(0f) }
+
         LaunchedEffect(Unit) {
             while (true) {
-                offsetX.snapTo(0f)
-                offsetX.animateTo(
-                    targetValue = -screenWidthPx,
+                offsetY.animateTo(
+                    targetValue = screenHeightPx,
                     animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
                 )
+                offsetY.snapTo(0f)
             }
         }
-        Image(
-            painter = bg,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset(offsetX.value.roundToInt(), 0) },
-            contentScale = ContentScale.Crop
-        )
-        Image(
-            painter = bg,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset((offsetX.value + screenWidthPx).roundToInt(), 0) },
-            contentScale = ContentScale.Crop
-        )
+
+        Box {
+            // Hình nền chính
+            Image(
+                painter = bg,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, offsetY.value.roundToInt()) },
+                contentScale = ContentScale.Crop
+            )
+            // Hình nền phụ để tạo hiệu ứng lặp
+            Image(
+                painter = bg,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, (offsetY.value - screenHeightPx).roundToInt()) },
+                contentScale = ContentScale.Crop
+            )
+        }
+
+
 
         // Draw monsters
         monsters.forEach { m ->
@@ -618,10 +628,10 @@ fun GameScreen(
                         .absoluteOffset { IntOffset(m.x.roundToInt(), (m.y.value - 10f).roundToInt()) }
                         .size(width = 80.dp, height = 5.dp)
                 ) {
-                    drawRect(color = Color.Red, size = size)
                     val hpRatio = m.hp.value / 100f
-                    drawRect(color = Color.Green, size = Size(size.width * hpRatio, size.height))
+                    drawRect(color = Color.Red, size = Size(size.width * hpRatio, size.height)) // máu hiện tại
                 }
+
             }
         }
 
@@ -676,35 +686,47 @@ fun GameScreen(
             }
         }
 
-        // Draw plane
+        // Draw plane + health bar + shield
         if (!isGameOver) {
-            Image(
-                painter = painterResource(R.drawable.maybay1),
-                contentDescription = null,
+            Box(
                 modifier = Modifier
                     .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }
-                    .size(100.dp),
-                contentScale = ContentScale.Fit
-            )
+                    .size(100.dp)
+            ) {
+                // Plane image
+                Image(
+                    painter = painterResource(R.drawable.maybay1),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
 
-            // Draw shield animation around plane
-            if (shieldActive) {
+                // Health bar trên plane
                 Canvas(
                     modifier = Modifier
-                        .absoluteOffset { IntOffset((planeX - 20f).roundToInt(), (planeY - 20f).roundToInt()) }
-                        .size(140.dp)
+                        .offset(y = (-15).dp) // đặt trên plane, đổi +15.dp để dưới plane
+                        .fillMaxWidth()
+                        .height(10.dp)
                 ) {
-                    drawCircle(
-                        color = Color.Cyan.copy(alpha = 0.7f),
-                        radius = 70.dp.toPx(),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
-                    )
+                    drawRoundRect(color = Color.Gray, size = size)
+                    val ratio = planeHp.value / 1000f
+                    drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
+                }
+
+                // Shield animation
+                if (shieldActive) {
+                    Canvas(modifier = Modifier.matchParentSize()) {
+                        drawCircle(
+                            color = Color.Cyan.copy(alpha = 0.7f),
+                            radius = 70.dp.toPx(),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                        )
+                    }
                 }
             }
 
-            // Draw wall above plane
+            // Wall vẽ riêng vẫn được
             if (wallActive) {
-                // Visual wall using image if available
                 Image(
                     painter = painterResource(R.drawable.wall),
                     contentDescription = null,
@@ -716,6 +738,7 @@ fun GameScreen(
                 )
             }
         }
+
         LaunchedEffect(timeActive) {
             if (timeActive) {
                 while (timeTimeLeft > 0) {
@@ -825,18 +848,7 @@ fun GameScreen(
             }
         }
 
-        // Health bar
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 116.dp, end = 16.dp)
-        ) {
-            Canvas(modifier = Modifier.size(width = 200.dp, height = 25.dp)) {
-                drawRoundRect(color = Color.Gray, size = size)
-                val ratio = planeHp.value / 1000f
-                drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
-            }
-        }
+
 
         // Shield countdown timer
         if (shieldActive) {
@@ -892,6 +904,7 @@ fun GameScreen(
             }
         }
 
+
         // GAME OVER overlay
         if (isGameOver) {
             Box(
@@ -901,18 +914,32 @@ fun GameScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "GAME OVER",
-                        color = Color.Red,
-                        fontSize = 36.sp
+                    // Thay Text bằng Image
+                    Image(
+                        painter = painterResource(R.drawable.game_over),
+                        contentDescription = "Game Over",
+                        modifier = Modifier
+                            .width(500.dp) // điều chỉnh kích thước phù hợp
+                            .height(300.dp)
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Bạn thu thêm được ${currentSessionScore} xu",
+                        color = Color.Yellow,
+                        fontSize = 24.sp
+                    )
+
                     Spacer(modifier = Modifier.height(24.dp))
+
                     Button(onClick = { onExit() }) {
                         Text(text = "Thoát", fontSize = 20.sp)
                     }
                 }
             }
         }
+
+
 
         if (isLevelClear) {
             Box(
@@ -929,7 +956,7 @@ fun GameScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Bạn thu được ${totalScore} xu",
+                        text = "Bạn thu thêm được được ${currentSessionScore}  xu",
                         color = Color.Yellow,
                         fontSize = 24.sp
                     )
