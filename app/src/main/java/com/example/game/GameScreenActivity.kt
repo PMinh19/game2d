@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Icon
@@ -251,9 +252,17 @@ fun GameScreen(
     var expanded by remember { mutableStateOf(false) }
     var isGameOver by remember { mutableStateOf(false) }
 
+    // Shield and Wall effects (must be declared before any usage)
+    var shieldActive by remember { mutableStateOf(false) }
+    var wallActive by remember { mutableStateOf(false) }
+    var shieldTimeLeft by remember { mutableStateOf(0f) }
+    var wallTimeLeft by remember { mutableStateOf(0f) }
+
     // Chest state
-    var chestItems by remember { mutableStateOf<List<String>>(emptyList()) }
+    var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
     var showChest by remember { mutableStateOf(false) }
+    var timeActive by remember { mutableStateOf(false) }
+    var timeTimeLeft by remember { mutableStateOf(0f) }
 
     // Load score từ Firebase
     LaunchedEffect(playerName) {
@@ -267,7 +276,6 @@ fun GameScreen(
             FirebaseHelper.getChestItems(playerName) { items ->
                 chestItems = items
             }
-            FirebaseHelper.updateChest(playerName, chestItems)
             FirebaseHelper.updateScore(playerName, totalScore)
         }
     }
@@ -316,16 +324,29 @@ fun GameScreen(
     }
 
     monsters.forEach { m ->
-        LaunchedEffect(m) {
+        LaunchedEffect(m, timeActive) { // Thêm timeActive vào key
             while (!isGameOver) {
                 if (!m.isDying.value && !m.isRespawning.value && m.hp.value > 0) {
-                    m.y.value += m.speed
-                    if (m.y.value > screenHeightPx + 100f) {
-                        respawnMonster(m, screenWidthPx, planeX)
-                        planeHp.value -= 50
-                        if (planeHp.value <= 0) {
-                            planeHp.value = 0
-                            isGameOver = true
+                    if (!timeActive) { // Chỉ di chuyển khi timeActive = false
+                        val wallY = planeY - 50f
+                        if (wallActive && m.y.value + 80f >= wallY) {
+                            m.y.value = wallY - 80f
+                            m.hp.value = (m.hp.value - 1).coerceAtLeast(0)
+                            if (m.hp.value <= 0) {
+                                coroutineScope.launch { respawnMonster(m, screenWidthPx, planeX) }
+                            }
+                        } else {
+                            m.y.value += m.speed
+                        }
+                        if (m.y.value > screenHeightPx + 100f) {
+                            respawnMonster(m, screenWidthPx, planeX)
+                            if (!shieldActive) {
+                                planeHp.value -= 50
+                                if (planeHp.value <= 0) {
+                                    planeHp.value = 0
+                                    isGameOver = true
+                                }
+                            }
                         }
                     }
                 }
@@ -333,6 +354,7 @@ fun GameScreen(
             }
         }
     }
+
 
     // Coins
     val coins = remember {
@@ -372,6 +394,84 @@ fun GameScreen(
 
     var isLevelClear by remember { mutableStateOf(false) }
 
+    // Countdown timers
+    LaunchedEffect(shieldActive) {
+        if (shieldActive) {
+            shieldTimeLeft = 10f
+            while (shieldTimeLeft > 0) {
+                delay(100)
+                shieldTimeLeft -= 0.1f
+            }
+            shieldActive = false
+        }
+    }
+
+    LaunchedEffect(wallActive) {
+        if (wallActive) {
+            wallTimeLeft = 10f
+            while (wallTimeLeft > 0) {
+                delay(100)
+                wallTimeLeft -= 0.1f
+            }
+            wallActive = false
+        }
+    }
+
+    fun applyChestItemEffect(item: ChestItem) {
+        when {
+            item.name.equals("Fireworks", ignoreCase = true) || item.resId == R.drawable.fireworks ||
+                    item.name.equals("Firework2", ignoreCase = true) || item.resId == R.drawable.firework2 -> {
+                // Kill all current monsters
+                monsters.forEach { m ->
+                    if (!m.isDying.value && m.hp.value > 0) {
+                        m.hp.value = 0
+                        coroutineScope.launch { respawnMonster(m, screenWidthPx, planeX) }
+                    }
+                }
+                // Collect all coins currently on screen (gain score)
+                coins.forEach { c ->
+                    if (!c.collected.value) {
+                        c.collected.value = true
+                        totalScore += 1
+                        val bag = BagCoinDisplay(c.x, c.y.value, totalScore)
+                        bagCoins.add(bag)
+                        coroutineScope.launch { delay(1000); bagCoins.remove(bag) }
+                        respawnCoin(c, screenWidthPx)
+                    }
+                }
+                isLevelClear = true
+            }
+            item.name.equals("bom1", ignoreCase = true) || item.resId == R.drawable.bom1 -> {
+                // Kill all current monsters without granting coins
+                monsters.forEach { m ->
+                    if (!m.isDying.value && m.hp.value > 0) {
+                        m.hp.value = 0
+                        coroutineScope.launch { respawnMonster(m, screenWidthPx, planeX) }
+                    }
+                }
+                // Destroy coins currently on screen (no score)
+                coins.forEach { c ->
+                    if (!c.collected.value) {
+                        c.collected.value = true
+                        respawnCoin(c, screenWidthPx)
+                    }
+                }
+                // Do NOT set level clear here. Gameplay continues.
+            }
+            item.name.equals("Shield", ignoreCase = true) || item.resId == R.drawable.shield1 -> {
+                shieldActive = true
+            }
+            item.name.equals("Wall", ignoreCase = true) || item.resId == R.drawable.wall -> {
+                wallActive = true
+            }
+            item.name.equals("Time", ignoreCase = true) || item.resId == R.drawable.time -> {
+                timeActive = true
+                timeTimeLeft = 10f  // thời gian hiệu ứng 10 giây
+            }
+
+        }
+    }
+
     // Collision bullets ↔ monsters
     LaunchedEffect(Unit) {
         while (!isGameOver) {
@@ -407,10 +507,12 @@ fun GameScreen(
         while (!isGameOver) {
             monsters.forEach { m ->
                 if (checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)) {
-                    planeHp.value -= 50
-                    if (planeHp.value <= 0) {
-                        planeHp.value = 0
-                        isGameOver = true
+                    if (!shieldActive) {
+                        planeHp.value -= 50
+                        if (planeHp.value <= 0) {
+                            planeHp.value = 0
+                            isGameOver = true
+                        }
                     }
                     coroutineScope.launch {
                         respawnMonster(m, screenWidthPx, planeX)
@@ -459,15 +561,17 @@ fun GameScreen(
     }
 
     // ------------------ UI ------------------
+    val dragModifier = if (!showChest) Modifier.pointerInput(Unit) {
+        detectDragGestures { change, dragAmount ->
+            if (!isGameOver) planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - 100f)
+            change.consume()
+        }
+    } else Modifier
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    if (!isGameOver) planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - 100f)
-                    change.consume()
-                }
-            }
+            .then(dragModifier)
     ) {
         // Moving background (layer 1)
         val bg = painterResource(R.drawable.nenms)
@@ -521,9 +625,14 @@ fun GameScreen(
             }
         }
 
-        // Draw coins
+        // Draw coins (blocked by wall)
         coins.forEach { c ->
             if (!c.collected.value && !isGameOver) {
+                val wallY = planeY - 50f
+                if (wallActive && c.y.value + 40f >= wallY) {
+                    // Block coin at wall line
+                    c.y.value = wallY - 40f
+                }
                 Image(
                     painter = painterResource(R.drawable.coin),
                     contentDescription = null,
@@ -577,6 +686,44 @@ fun GameScreen(
                     .size(100.dp),
                 contentScale = ContentScale.Fit
             )
+
+            // Draw shield animation around plane
+            if (shieldActive) {
+                Canvas(
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset((planeX - 20f).roundToInt(), (planeY - 20f).roundToInt()) }
+                        .size(140.dp)
+                ) {
+                    drawCircle(
+                        color = Color.Cyan.copy(alpha = 0.7f),
+                        radius = 70.dp.toPx(),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                    )
+                }
+            }
+
+            // Draw wall above plane
+            if (wallActive) {
+                // Visual wall using image if available
+                Image(
+                    painter = painterResource(R.drawable.wall),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(0, (planeY - 60f).roundToInt()) }
+                        .fillMaxWidth()
+                        .height(30.dp),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        LaunchedEffect(timeActive) {
+            if (timeActive) {
+                while (timeTimeLeft > 0) {
+                    delay(100)
+                    timeTimeLeft -= 0.1f
+                }
+                timeActive = false
+            }
         }
 
         // TopBarUI - layer trên cùng với positioning tuyệt đối
@@ -588,15 +735,24 @@ fun GameScreen(
             TopBarUI(
                 bagCoinScore = totalScore,
                 chestItems = chestItems,
-                onBuyItem = { itemName, price ->
+                onBuyItem = { item, price ->
                     if (totalScore >= price) {
                         totalScore -= price
-                        chestItems = chestItems + itemName
-
+                        val updated = chestItems + item
+                        chestItems = updated
                         if (!playerName.isNullOrBlank()) {
                             FirebaseHelper.updateScore(playerName, totalScore)
-                            FirebaseHelper.updateChest(playerName, chestItems)
+                            FirebaseHelper.updateChest(playerName, updated)
                         }
+                    }
+                },
+                onUseChestItem = { item ->
+                    applyChestItemEffect(item)
+                    val updated = chestItems.toMutableList().also { it.remove(item) }
+                    chestItems = updated
+                    if (!playerName.isNullOrBlank()) {
+                        FirebaseHelper.updateChest(playerName, updated)
+                        FirebaseHelper.updateScore(playerName, totalScore)
                     }
                 }
             )
@@ -682,6 +838,60 @@ fun GameScreen(
             }
         }
 
+        // Shield countdown timer
+        if (shieldActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 150.dp)
+            ) {
+                Text(
+                    text = "Shield: ${String.format("%.1f", shieldTimeLeft)}s",
+                    color = Color.Cyan,
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+        }
+
+        // Wall countdown timer
+        if (wallActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 180.dp)
+            ) {
+                Text(
+                    text = "Wall: ${String.format("%.1f", wallTimeLeft)}s",
+                    color = Color.Red,
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+        }
+        if (timeActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 210.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(R.drawable.time),
+                        contentDescription = "Time",
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "${String.format("%.1f", timeTimeLeft)}s",
+                        color = Color.Yellow,
+                        fontSize = 18.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                }
+            }
+        }
+
         // GAME OVER overlay
         if (isGameOver) {
             Box(
@@ -742,7 +952,30 @@ fun GameScreen(
                     Text("🎁 Chest của bạn 🎁", fontSize = 24.sp, color = Color.Yellow)
                     Spacer(Modifier.height(16.dp))
                     chestItems.forEach { item ->
-                        Text(text = "- $item", fontSize = 18.sp, color = Color.White)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp, horizontal = 16.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(item.resId),
+                                contentDescription = item.name,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(text = item.name, fontSize = 20.sp, color = Color.White, modifier = Modifier.weight(1f))
+                            Button(onClick = {
+                                applyChestItemEffect(item)
+                                val updated = chestItems.toMutableList().also { it.remove(item) }
+                                chestItems = updated
+                                if (!playerName.isNullOrBlank()) {
+                                    FirebaseHelper.updateChest(playerName, updated)
+                                    FirebaseHelper.updateScore(playerName, totalScore)
+                                }
+                                showChest = false
+                            }) { Text("Chọn") }
+                        }
                     }
                     Spacer(Modifier.height(24.dp))
                     Button(onClick = { showChest = false }) {

@@ -8,6 +8,14 @@ data class ChestItem(val name: String, val resId: Int)
 object FirebaseHelper {
     private val db = FirebaseFirestore.getInstance()
 
+    private fun resolveResIdFromName(name: String): Int {
+        return when (name) {
+            "Fireworks" -> R.drawable.fireworks
+            "Firework2" -> R.drawable.firework2
+            else -> R.drawable.store
+        }
+    }
+
     // ---------------- SYNC ----------------
     fun syncAllPlayers() {
         db.collection("rankings").get()
@@ -108,10 +116,24 @@ object FirebaseHelper {
             .get()
             .addOnSuccessListener { docs ->
                 if (!docs.isEmpty) {
-                    val chestList = docs.documents[0].get("chest") as? List<Map<String, Any>>
-                    val chest = chestList?.map {
-                        ChestItem(it["name"] as String, (it["resId"] as Long).toInt())
-                    } ?: emptyList()
+                    val chestRaw = docs.documents[0].get("chest")
+                    val chest: List<ChestItem> = when (chestRaw) {
+                        is List<*> -> {
+                            if (chestRaw.firstOrNull() is Map<*, *>) {
+                                @Suppress("UNCHECKED_CAST")
+                                val maps = chestRaw as List<Map<String, Any>>
+                                maps.mapNotNull { m ->
+                                    val name = m["name"] as? String
+                                    val res = (m["resId"] as? Number)?.toInt()
+                                    if (name != null && res != null) ChestItem(name, res) else null
+                                }
+                            } else if (chestRaw.firstOrNull() is String) {
+                                val names = chestRaw.filterIsInstance<String>()
+                                names.map { n -> ChestItem(n, resolveResIdFromName(n)) }
+                            } else emptyList()
+                        }
+                        else -> emptyList()
+                    }
                     onResult(chest)
                 } else {
                     onResult(emptyList())

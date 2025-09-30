@@ -35,11 +35,11 @@ fun LevelPathScreen() {
     val buttonSize = 70.dp
 
     val bagCoinScore = remember { mutableStateOf(0) }
-    val chestItems = remember { mutableStateListOf<String>() }
+    val chestItems = remember { mutableStateListOf<ChestItem>() }
     val db = FirebaseFirestore.getInstance()
     val playerName = PrefManager.getPlayerName(context)
 
-    // Load score + chest từ Firebase
+    // Load score + chest từ Firebase (hỗ trợ cả định dạng cũ và mới)
     LaunchedEffect(playerName) {
         if (!playerName.isNullOrBlank()) {
             db.collection("rankings")
@@ -48,9 +48,37 @@ fun LevelPathScreen() {
                     if (e != null) { Log.w("Firebase", "Listen failed.", e); return@addSnapshotListener }
                     if (snapshots != null && !snapshots.isEmpty) {
                         val doc = snapshots.documents[0]
-                        val chestFromDb = doc.get("chest") as? List<String> ?: emptyList()
+                        val chestRaw = doc.get("chest")
+                        val items: List<ChestItem> = when (chestRaw) {
+                            is List<*> -> {
+                                when (chestRaw.firstOrNull()) {
+                                    is Map<*, *> -> {
+                                        @Suppress("UNCHECKED_CAST")
+                                        val maps = chestRaw as List<Map<String, Any>>
+                                        maps.mapNotNull { m ->
+                                            val n = m["name"] as? String
+                                            val r = (m["resId"] as? Number)?.toInt()
+                                            if (n != null && r != null) ChestItem(n, r) else null
+                                        }
+                                    }
+                                    is String -> {
+                                        val names = chestRaw.filterIsInstance<String>()
+                                        names.map { n ->
+                                            val res = when (n) {
+                                                "Fireworks" -> R.drawable.fireworks
+                                                "Firework2" -> R.drawable.firework2
+                                                else -> R.drawable.store
+                                            }
+                                            ChestItem(n, res)
+                                        }
+                                    }
+                                    else -> emptyList()
+                                }
+                            }
+                            else -> emptyList()
+                        }
                         chestItems.clear()
-                        chestItems.addAll(chestFromDb)
+                        chestItems.addAll(items)
                         val score = doc.getLong("score") ?: 0
                         bagCoinScore.value = score.toInt()
                     }
@@ -177,42 +205,19 @@ fun LevelPathScreen() {
         TopBarUI(
             bagCoinScore = bagCoinScore.value,
             chestItems = chestItems,
-            onBuyItem = { itemName, price ->
+            onBuyItem = { item, price ->
                 if (playerName.isNullOrBlank()) return@TopBarUI
                 if (bagCoinScore.value < price) {
-                    Toast.makeText(context, "Không đủ coins để mua $itemName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Không đủ coins để mua ${item.name}", Toast.LENGTH_SHORT).show()
                     return@TopBarUI
                 }
-                db.collection("rankings")
-                    .whereEqualTo("name", playerName)
-                    .get()
-                    .addOnSuccessListener { docs ->
-                        if (!docs.isEmpty) {
-                            val docId = docs.documents[0].id
-                            val currentChest = docs.documents[0].get("chest") as? List<String> ?: emptyList()
-                            val newScore = bagCoinScore.value - price
-                            val newChest = currentChest + itemName
-                            db.collection("rankings").document(docId)
-                                .update(
-                                    mapOf(
-                                        "score" to newScore,
-                                        "chest" to newChest
-                                    )
-                                )
-                                .addOnSuccessListener {
-                                    bagCoinScore.value = newScore
-                                    chestItems.clear()
-                                    chestItems.addAll(newChest)
-                                    Toast.makeText(context, "Đã mua $itemName", Toast.LENGTH_SHORT).show()
-                                }
-                                .addOnFailureListener { e ->
-                                    Toast.makeText(context, "Mua thất bại: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
-                        }
-                    }
-                    .addOnFailureListener { e ->
-                        Toast.makeText(context, "Lỗi kết nối Firebase: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+                val newScore = bagCoinScore.value - price
+                bagCoinScore.value = newScore
+                val updated = chestItems.toList() + item
+                chestItems.add(item)
+                FirebaseHelper.updateScore(playerName, newScore)
+                FirebaseHelper.updateChest(playerName, updated)
+                Toast.makeText(context, "Đã mua ${item.name}", Toast.LENGTH_SHORT).show()
             }
         )
     }

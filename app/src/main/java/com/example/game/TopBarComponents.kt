@@ -13,8 +13,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ----- Chest item model -----
-data class ChestItem(val name: String, val resId: Int)
+// Uses ChestItem from package `com.example.game`
 
 // ----- BagCoin -----
 @Composable
@@ -39,7 +38,10 @@ fun BagCoinDisplay(bagCoinScore: Int) {
 
 // ----- Chest -----
 @Composable
-fun ChestDisplay(chestItems: List<ChestItem>) {
+fun ChestDisplay(
+    chestItems: List<ChestItem>,
+    onUseItem: ((ChestItem) -> Unit)? = null
+) {
     val showChestDialog = remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
@@ -64,7 +66,9 @@ fun ChestDisplay(chestItems: List<ChestItem>) {
                     else chestItems.forEach { item ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
                         ) {
                             Image(
                                 painter = painterResource(item.resId),
@@ -72,7 +76,13 @@ fun ChestDisplay(chestItems: List<ChestItem>) {
                                 modifier = Modifier.size(40.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(item.name)
+                            Text(item.name, modifier = Modifier.weight(1f))
+                            onUseItem?.let { use ->
+                                Button(onClick = {
+                                    use(item)
+                                    showChestDialog.value = false
+                                }) { Text("Chọn") }
+                            }
                         }
                     }
                 }
@@ -108,8 +118,12 @@ fun StoreDisplay(
     }
 
     val itemsForSale = listOf(
-        ChestItem("Fireworks", R.drawable.fireworks) to 5,
-        ChestItem("Firework2", R.drawable.firework2) to 5
+        ChestItem("Pháo ", R.drawable.fireworks) to 2,
+        ChestItem("Pháo sáng", R.drawable.firework2) to 2,
+        ChestItem("Bom", R.drawable.bom1) to 2,
+        ChestItem("Khiên", R.drawable.shield1) to 2,
+        ChestItem("Tường chắn", R.drawable.wall) to 2,
+        ChestItem("Đồng hồ", R.drawable.time) to 2
     )
 
     if (showStoreDialog.value) {
@@ -173,10 +187,12 @@ fun StoreDisplay(
 
 // ----- TopBar -----
 @Composable
-fun TopBarUI() {
-    var bagCoinScore by remember { mutableStateOf(10) }
-    var chestItems by remember { mutableStateOf(listOf<ChestItem>()) }
-
+fun TopBarUI(
+    bagCoinScore: Int,
+    chestItems: List<ChestItem>,
+    onBuyItem: (ChestItem, Int) -> Unit,
+    onUseChestItem: ((ChestItem) -> Unit)? = null
+) {
     Column(
         modifier = Modifier
             .padding(top = 16.dp, start = 16.dp)
@@ -184,11 +200,8 @@ fun TopBarUI() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.Start
     ) {
-        StoreDisplay(bagCoinScore) { item, price ->
-            bagCoinScore -= price
-            chestItems = chestItems + item
-        }
-        ChestDisplay(chestItems)
+        StoreDisplay(bagCoinScore, onBuyItem)
+        ChestDisplay(chestItems, onUseItem = onUseChestItem)
         BagCoinDisplay(bagCoinScore)
     }
 }

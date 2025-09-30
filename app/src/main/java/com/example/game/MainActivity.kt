@@ -35,28 +35,18 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 // State cho BagCoin & Chest
                 val bagCoinScore = remember { mutableStateOf(0) }
-                val chestItems = remember { mutableStateListOf<String>() }
+                val chestItems = remember { mutableStateListOf<ChestItem>() }
                 val db = FirebaseFirestore.getInstance()
                 val context = LocalContext.current
 
                 // Load score + chest từ Firebase
                 LaunchedEffect(playerName) {
                     if (!playerName.isNullOrBlank()) {
-                        db.collection("rankings")
-                            .whereEqualTo("name", playerName)
-                            .get()
-                            .addOnSuccessListener { docs ->
-                                if (!docs.isEmpty) {
-                                    val doc = docs.documents[0]
-                                    bagCoinScore.value = (doc.getLong("score") ?: 0).toInt()
-                                    val chestFromDb = doc.get("chest") as? List<String> ?: emptyList()
-                                    chestItems.clear()
-                                    chestItems.addAll(chestFromDb)
-                                }
-                            }
-                            .addOnFailureListener { e ->
-                                Log.w("Firebase", "Failed to load player data", e)
-                            }
+                        FirebaseHelper.getScore(playerName) { score -> bagCoinScore.value = score }
+                        FirebaseHelper.getChestItems(playerName) { items ->
+                            chestItems.clear()
+                            chestItems.addAll(items)
+                        }
                     }
                 }
 
@@ -88,28 +78,18 @@ class MainActivity : ComponentActivity() {
                         TopBarUI(
                             bagCoinScore = bagCoinScore.value,
                             chestItems = chestItems,
-                            onBuyItem = { itemName, price ->
+                            onBuyItem = { item, price ->
                                 if (bagCoinScore.value >= price) {
+                                    val newScore = bagCoinScore.value - price
+                                    bagCoinScore.value = newScore
+                                    val updated = chestItems.toList() + item
+                                    chestItems.add(item)
                                     if (!playerName.isNullOrBlank()) {
-                                        db.collection("rankings")
-                                            .whereEqualTo("name", playerName)
-                                            .get()
-                                            .addOnSuccessListener { docs ->
-                                                if (!docs.isEmpty) {
-                                                    val docId = docs.documents[0].id
-                                                    val newScore = bagCoinScore.value - price
-                                                    db.collection("rankings").document(docId)
-                                                        .update(
-                                                            "score", newScore,
-                                                            "chest", chestItems.toList() + itemName
-                                                        )
-                                                    bagCoinScore.value = newScore
-                                                    chestItems.add(itemName)
-                                                }
-                                            }
+                                        FirebaseHelper.updateScore(playerName, newScore)
+                                        FirebaseHelper.updateChest(playerName, updated)
                                     }
                                 } else {
-                                    Toast.makeText(context, "Không đủ coins để mua $itemName", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Không đủ coins để mua ${item.name}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         )
