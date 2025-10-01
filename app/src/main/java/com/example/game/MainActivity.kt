@@ -2,7 +2,6 @@ package com.example.game
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,7 +16,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.firebase.firestore.FirebaseFirestore
+import com.example.game.TopBarComponent.TopBarUI
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,91 +32,110 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                // State cho BagCoin & Chest
-                val bagCoinScore = remember { mutableStateOf(0) }
-                val chestItems = remember { mutableStateListOf<ChestItem>() }
-                val db = FirebaseFirestore.getInstance()
-                val context = LocalContext.current
+                var showLevelScreen by remember { mutableStateOf(false) }
 
-                // Load score + chest từ Firebase
-                LaunchedEffect(playerName) {
-                    if (!playerName.isNullOrBlank()) {
-                        FirebaseHelper.getScore(playerName) { score -> bagCoinScore.value = score }
-                        FirebaseHelper.getChestItems(playerName) { items ->
-                            chestItems.clear()
-                            chestItems.addAll(items)
-                        }
-                    }
-                }
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Background
-                    Image(
-                        painter = painterResource(R.drawable.nen1),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
+                if (showLevelScreen) {
+                    LevelPathScreen(onExit = {
+                        showLevelScreen = false
+                    })
+                } else {
+                    MainScreen(
+                        playerName = playerName,
+                        onPlayClicked = { showLevelScreen = true }
                     )
-
-                    // Welcome text
-                    Text(
-                        text = "Xin chào, $playerName!",
-                        color = androidx.compose.ui.graphics.Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 40.dp)
-                    )
-
-                    // Top bar UI (Store, Chest, BagCoin) ở góc trên trái
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(top = 16.dp, start = 16.dp)
-                    ) {
-                        TopBarUI(
-                            bagCoinScore = bagCoinScore.value,
-                            chestItems = chestItems,
-                            onBuyItem = { item, price ->
-                                if (bagCoinScore.value >= price) {
-                                    val newScore = bagCoinScore.value - price
-                                    bagCoinScore.value = newScore
-                                    val updated = chestItems.toList() + item
-                                    chestItems.add(item)
-                                    if (!playerName.isNullOrBlank()) {
-                                        FirebaseHelper.updateScore(playerName, newScore)
-                                        FirebaseHelper.updateChest(playerName, updated)
-                                    }
-                                } else {
-                                    Toast.makeText(context, "Không đủ coins để mua ${item.name}", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        )
-                    }
-
-                    // Buttons: Play / Rank / Settings
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 64.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Button(onClick = {
-                            setContent { LevelPathScreen() } // chuyển sang màn hình level
-                        }) {
-                            Text("Play")
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { context.startActivity(Intent(context, RankScreenActivity::class.java)) }
-                        ) { Text("Rank") }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { context.startActivity(Intent(context, SettingScreenActivity::class.java)) }
-                        ) { Text("Settings") }
-                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun MainScreen(
+    playerName: String,
+    onPlayClicked: () -> Unit
+) {
+    // State cho BagCoin & Chest
+    val bagCoinScore = remember { mutableStateOf(0) }
+    val chestItems = remember { mutableStateListOf<ChestItem>() }
+    val context = LocalContext.current
+
+    // Load score + chest từ Firebase (khôi phục hệ thống cũ)
+    LaunchedEffect(playerName) {
+        if (playerName.isNotBlank()) {
+            FirebaseHelper.getScore(playerName) { score -> bagCoinScore.value = score }
+            FirebaseHelper.getChestItems(playerName) { items ->
+                chestItems.clear()
+                chestItems.addAll(items)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Background
+        Image(
+            painter = painterResource(R.drawable.nen1),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Welcome text
+        Text(
+            text = "Xin chào, $playerName!",
+            color = androidx.compose.ui.graphics.Color.White,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 40.dp)
+        )
+
+        // Top bar UI (Store, Chest, BagCoin) ở góc trên trái
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 16.dp, start = 16.dp)
+        ) {
+            TopBarUI(
+                bagCoinScore = bagCoinScore.value,
+                chestItems = chestItems,
+                onBuyItem = { item: ChestItem, price: Int ->
+                    if (bagCoinScore.value >= price) {
+                        val newScore = bagCoinScore.value - price
+                        bagCoinScore.value = newScore
+                        chestItems.add(item)
+                        if (playerName.isNotBlank()) {
+                            FirebaseHelper.updateScore(playerName, newScore)
+                            FirebaseHelper.updateChest(playerName, chestItems.toList())
+                        }
+                        Toast.makeText(context, "Mua ${item.name} thành công!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Không đủ coins để mua ${item.name}", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onUseChestItem = { item: ChestItem ->
+                    // Handle chest item usage if needed
+                }
+            )
+        }
+
+        // Buttons: Play / Rank / Settings
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 64.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Button(onClick = onPlayClicked) {
+                Text("Play")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { context.startActivity(Intent(context, RankScreenActivity::class.java)) }
+            ) { Text("Rank") }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { context.startActivity(Intent(context, SettingScreenActivity::class.java)) }
+            ) { Text("Settings") }
         }
     }
 }

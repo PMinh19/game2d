@@ -19,15 +19,15 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.firebase.firestore.FirebaseFirestore
+import com.example.game.TopBarComponent.TopBarUI
 
 @Composable
-fun LevelPathScreen() {
+fun LevelPathScreen(onExit: (() -> Unit)? = null) {
     val context = LocalContext.current
     val config = LocalConfiguration.current
     val screenWidthDp = config.screenWidthDp.dp
@@ -129,7 +129,11 @@ fun LevelPathScreen() {
         // Nút X thoát về MainActivity
         IconButton(
             onClick = {
-                context.startActivity(Intent(context, MainActivity::class.java))
+                if (onExit != null) {
+                    onExit()
+                } else {
+                    context.startActivity(Intent(context, MainActivity::class.java))
+                }
             },
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -205,19 +209,21 @@ fun LevelPathScreen() {
         TopBarUI(
             bagCoinScore = bagCoinScore.value,
             chestItems = chestItems,
-            onBuyItem = { item, price ->
+            onBuyItem = { item: ChestItem, price: Int ->
                 if (playerName.isNullOrBlank()) return@TopBarUI
-                if (bagCoinScore.value < price) {
+                if (bagCoinScore.value >= price) {
+                    val newScore = bagCoinScore.value - price
+                    bagCoinScore.value = newScore
+                    chestItems.add(item)
+                    FirebaseHelper.updateScore(playerName, newScore)
+                    FirebaseHelper.updateChest(playerName, chestItems.toList())
+                    Toast.makeText(context, "Mua ${item.name} thành công!", Toast.LENGTH_SHORT).show()
+                } else {
                     Toast.makeText(context, "Không đủ coins để mua ${item.name}", Toast.LENGTH_SHORT).show()
-                    return@TopBarUI
                 }
-                val newScore = bagCoinScore.value - price
-                bagCoinScore.value = newScore
-                val updated = chestItems.toList() + item
-                chestItems.add(item)
-                FirebaseHelper.updateScore(playerName, newScore)
-                FirebaseHelper.updateChest(playerName, updated)
-                Toast.makeText(context, "Đã mua ${item.name}", Toast.LENGTH_SHORT).show()
+            },
+            onUseChestItem = { item: ChestItem ->
+                // Handle chest item usage if needed
             }
         )
     }

@@ -1,4 +1,5 @@
 package com.example.game
+
 import android.graphics.RectF
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.DropdownMenu
@@ -24,7 +25,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +45,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlin.random.Random
+import com.example.game.TopBarComponent.TopBarUI
 
 class Level2Activity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
@@ -52,11 +53,13 @@ class Level2Activity : ComponentActivity() {
     private var shootSoundId: Int = 0
     private var hitSoundId: Int = 0
     private var coinSoundId: Int = 0
+    private var soundsLoaded = false
+    private var loadedSounds = 0
+    private val totalSounds = 3
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize SoundPool
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -65,10 +68,23 @@ class Level2Activity : ComponentActivity() {
             .setMaxStreams(10)
             .setAudioAttributes(audioAttributes)
             .build()
+
+        soundPool.setOnLoadCompleteListener { _, _, status ->
+            if (status == 0) {
+                loadedSounds++
+                if (loadedSounds >= totalSounds) {
+                    soundsLoaded = true
+                    Log.d("SoundPool", "All sounds loaded successfully!")
+                }
+            } else {
+                Log.e("SoundPool", "Failed to load sound, status: $status")
+            }
+        }
+
         shootSoundId = soundPool.load(this, R.raw.shoot, 1)
         hitSoundId = soundPool.load(this, R.raw.hit, 1)
+        coinSoundId = soundPool.load(this, R.raw.hit, 1)
 
-        // Initialize MediaPlayer for background music
         try {
             mediaPlayer = MediaPlayer.create(this, R.raw.background_music).apply {
                 setOnPreparedListener { start() }
@@ -122,7 +138,8 @@ data class MonsterState2(
     var hp: MutableState<Int>,
     var angle: Float,
     var radius: Float,
-var alive: MutableState<Boolean> = mutableStateOf(true))
+    var alive: MutableState<Boolean> = mutableStateOf(true)
+)
 
 data class MonsterGroup(
     var centerX: MutableState<Float>,
@@ -130,13 +147,15 @@ data class MonsterGroup(
     var speedX: Float,
     var speedY: Float,
     var monsters: List<MonsterState2>,
-   )
+)
+
 data class Coin2(
     var x: Float,
     var y: MutableState<Float>,
     var speed: Float,
     var collected: MutableState<Boolean> = mutableStateOf(false)
 )
+
 data class BagCoinDisplay2(
     val x: Float,
     val y: Float,
@@ -149,9 +168,8 @@ private fun respawnMonster(m: MonsterState2, screenWidthPx: Float) {
     m.x = Random.nextFloat() * (screenWidthPx - 100f)
     m.speed = Random.nextFloat() * 1.5f + 1.5f
     m.hp.value = 100
-
+    m.alive.value = true
 }
-
 
 private fun respawnCoin(c: Coin2, screenWidthPx: Float) {
     c.y.value = -Random.nextInt(100, 600).toFloat()
@@ -173,7 +191,9 @@ private fun checkCollisionPlaneMonster(
     val planeRect = RectF(planeX, planeY, planeX + planeWidth, planeY + planeHeight)
     val monsterRect = RectF(monster.x, monster.y.value, monster.x + monsterWidth, monster.y.value + monsterHeight)
 
-    return RectF.intersects(planeRect, monsterRect)
+    val intersects = RectF.intersects(planeRect, monsterRect)
+    Log.d("COLLISION_DEBUG", "PlaneRect: $planeRect, MonsterRect: $monsterRect, Intersects: $intersects")
+    return intersects
 }
 
 private fun checkCollisionPlaneCoin(
@@ -191,6 +211,7 @@ private fun checkCollisionPlaneCoin(
 
     return RectF.intersects(planeRect, coinRect)
 }
+
 private fun checkCollisionBulletMonster(
     bullet: Bullet2,
     monster: MonsterState2
@@ -219,8 +240,8 @@ fun Level2Screen(
     val density = LocalDensity.current
     val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
     val coroutineScope = rememberCoroutineScope()
-    val db = FirebaseFirestore.getInstance()
-    val playerName = PrefManager.getPlayerName(LocalContext.current)
+    val context = LocalContext.current
+    val playerName = PrefManager.getPlayerName(context)
 
     var musicEnabled by remember { mutableStateOf(true) }
     var sfxEnabled by remember { mutableStateOf(true) }
@@ -232,16 +253,18 @@ fun Level2Screen(
     val monsterGroups = remember { mutableStateListOf<MonsterGroup>() }
     val monsters = remember { mutableStateListOf<MonsterState2>() }
 
-// Giới hạn số lần spawn
-    var spawnCount by remember { mutableStateOf(0) }
-    val maxSpawnCount = 10
+    var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
+    var showChest by remember { mutableStateOf(false) }
+
+    var lastFirebaseSync by remember { mutableStateOf(0L) }
+    val firebaseSyncInterval = 5000L
 
     fun spawnMonsterGroup(centerX: Float, centerY: Float) {
         val newMonsters = List(3) { i ->
             MonsterState2(
                 x = centerX,
                 y = mutableStateOf(centerY),
-                speed = 0f, // tốc độ riêng của từng quái = 0 vì quái đi theo tâm
+                speed = 0f,
                 hp = mutableStateOf(100),
                 angle = (i * 2 * PI / 3).toFloat(),
                 radius = 150f
@@ -251,15 +274,42 @@ fun Level2Screen(
         val group = MonsterGroup(
             centerX = mutableStateOf(centerX),
             centerY = mutableStateOf(centerY),
-            speedX = Random.nextFloat() * 4f - 2f,
-            speedY = Random.nextFloat() * 4f - 2f,
+            speedX = (Random.nextFloat() * 180f - 90f),
+            speedY = (Random.nextFloat() * 90f + 30f), // Bias towards downward movement
             monsters = newMonsters
         )
 
         monsterGroups.add(group)
         monsters.addAll(newMonsters)
+        Log.d("SPAWN_DEBUG", "Spawned group at centerY: ${group.centerY.value}")
     }
 
+    fun spawnMonsterGroupFromRandomSide() {
+        val side = Random.nextInt(4)
+        val centerX: Float
+        val centerY: Float
+
+        when (side) {
+            0 -> {
+                centerX = Random.nextFloat() * (screenWidthPx - 400f) + 200f
+                centerY = -300f
+            }
+            1 -> {
+                centerX = screenWidthPx + 300f
+                centerY = Random.nextFloat() * (screenHeightPx - 600f) + 200f
+            }
+            2 -> {
+                centerX = Random.nextFloat() * (screenWidthPx - 400f) + 200f
+                centerY = screenHeightPx - 400f // Start closer to plane
+            }
+            else -> {
+                centerX = -300f
+                centerY = Random.nextFloat() * (screenHeightPx - 600f) + 200f
+            }
+        }
+
+        spawnMonsterGroup(centerX, centerY)
+    }
 
     fun startLevel(monsterGroups: MutableList<MonsterGroup>, monsters: MutableList<MonsterState2>) {
         monsters.clear()
@@ -267,54 +317,141 @@ fun Level2Screen(
         isLevelClear = false
     }
 
-
     LaunchedEffect(Unit) {
         startLevel(monsterGroups, monsters)
         repeat(10) { i ->
-            val cx = Random.nextFloat() * (screenWidthPx - 300f) + 150f
-            val cy = Random.nextFloat() * 400f + 100f
-            spawnMonsterGroup(cx, cy)
-            delay(3000)
+            spawnMonsterGroupFromRandomSide()
+            Log.d("SPAWN_DEBUG", "Spawned monster group $i, total monsters: ${monsters.size}")
+            delay(6000)
         }
     }
 
-
-
-    // Load score từ Firebase
     LaunchedEffect(playerName) {
         if (!playerName.isNullOrBlank()) {
-            db.collection("rankings")
-                .whereEqualTo("name", playerName)
-                .get()
-                .addOnSuccessListener { docs ->
-                    if (!docs.isEmpty) {
-                        val score = docs.documents[0].getLong("score") ?: 0
-                        totalScore.value = score.toInt()
-                    }
-                }
+            FirebaseHelper.getScore(playerName) { score ->
+                totalScore.value = score
+            }
+            FirebaseHelper.getChestItems(playerName) { items ->
+                chestItems = items
+            }
         }
     }
 
-    // MediaPlayer toggle
+    fun syncScoreToFirebase(force: Boolean = false) {
+        val currentTime = System.currentTimeMillis()
+        if (force || currentTime - lastFirebaseSync > firebaseSyncInterval) {
+            if (!playerName.isNullOrBlank()) {
+                FirebaseHelper.updateScore(playerName, totalScore.value)
+                lastFirebaseSync = currentTime
+            }
+        }
+    }
+
+    var shieldActive by remember { mutableStateOf(false) }
+    var wallActive by remember { mutableStateOf(false) }
+    var timeActive by remember { mutableStateOf(false) }
+    var shieldTimeLeft by remember { mutableStateOf(0f) }
+    var wallTimeLeft by remember { mutableStateOf(0f) }
+    var timeTimeLeft by remember { mutableStateOf(0f) }
+
     LaunchedEffect(musicEnabled) {
         try {
             if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
         } catch (_: Exception) {}
     }
 
-    // Plane
     var planeX by remember { mutableStateOf(screenWidthPx / 2f - 50f) }
     val planeY = screenHeightPx - 250f
     val planeHp = remember { mutableStateOf(1000) }
 
-    // Bullets
+    LaunchedEffect(planeHp.value) {
+        Log.d("PLANE_HP", "Plane HP changed: ${planeHp.value}")
+    }
+
     val bullets = remember { mutableStateListOf<Bullet2>() }
+
+    val coins = remember {
+        List(5) {
+            val speed = Random.nextFloat() * 2f + 1f
+            Coin2(
+                x = Random.nextFloat() * (screenWidthPx - 50f),
+                y = mutableStateOf(-Random.nextInt(100, 600).toFloat()),
+                speed = speed
+            )
+        }
+    }
+
+    val bagCoins = remember { mutableStateListOf<BagCoinDisplay2>() }
+
+    fun applyChestItemEffect(item: ChestItem) {
+        try {
+            ChestItemEffects.applyLevel2Effect(
+                item = item,
+                monsters = monsters,
+                coins = coins,
+                bagCoins = bagCoins,
+                coroutineScope = coroutineScope,
+                screenWidthPx = screenWidthPx,
+                planeX = planeX,
+                onScoreUpdate = { scoreToAdd ->
+                    totalScore.value += scoreToAdd
+                    syncScoreToFirebase()
+                },
+                onShieldActivate = {
+                    shieldActive = true
+                },
+                onWallActivate = {
+                    wallActive = true
+                },
+                onTimeActivate = {
+                    timeActive = true
+                    timeTimeLeft = 10f
+                },
+                onLevelClear = {
+                    isLevelClear = true
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("LEVEL2_DEBUG", "Exception in Level2 ChestItemEffects: ${e.message}")
+        }
+    }
+
+    LaunchedEffect(shieldActive) {
+        if (shieldActive) {
+            shieldTimeLeft = 10f
+            while (shieldTimeLeft > 0) {
+                delay(100)
+                shieldTimeLeft -= 0.1f
+            }
+            shieldActive = false
+        }
+    }
+
+    LaunchedEffect(wallActive) {
+        if (wallActive) {
+            wallTimeLeft = 10f
+            while (wallTimeLeft > 0) {
+                delay(100)
+                wallTimeLeft -= 0.1f
+            }
+            wallActive = false
+        }
+    }
+
+    LaunchedEffect(timeActive) {
+        if (timeActive) {
+            while (timeTimeLeft > 0) {
+                delay(100)
+                timeTimeLeft -= 0.1f
+            }
+            timeActive = false
+        }
+    }
 
     LaunchedEffect(Unit) {
         while (!isGameOver) {
             bullets.add(Bullet2(planeX - 20f, planeY))
             bullets.add(Bullet2(planeX + 20f, planeY))
-            if (sfxEnabled) soundPool.play(shootSoundId, 0.5f, 0.5f, 1, 0, 1f)
             delay(350)
         }
     }
@@ -327,46 +464,47 @@ fun Level2Screen(
         }
     }
 
-    // Monsters
-
-
     monsterGroups.forEach { group ->
-        LaunchedEffect(group) {
+        LaunchedEffect(group, timeActive) {
             while (!isGameOver) {
-                group.centerX.value += group.speedX
-                group.centerY.value += group.speedY
+                if (!timeActive) {
+                    group.centerX.value += group.speedX
+                    group.centerY.value += group.speedY
 
-                if (group.centerX.value < 0 || group.centerX.value > screenWidthPx - 100f) group.speedX *= -1
-                if (group.centerY.value < 0 || group.centerY.value > screenHeightPx - 200f) group.speedY *= -1
+                    val margin = 200f
+                    if (group.centerX.value - margin < 0) {
+                        group.centerX.value = margin
+                        group.speedX = kotlin.math.abs(group.speedX)
+                    } else if (group.centerX.value + margin > screenWidthPx) {
+                        group.centerX.value = screenWidthPx - margin
+                        group.speedX = -kotlin.math.abs(group.speedX)
+                    }
 
-                group.monsters.forEachIndexed { i, m ->
-                    m.angle += 0.05f // tốc độ quay
-                    m.x = group.centerX.value + m.radius * cos(m.angle + i * 2 * PI / 3).toFloat()
-                    m.y.value = group.centerY.value + m.radius * sin(m.angle + i * 2 * PI / 3).toFloat()
+                    if (group.centerY.value - margin < 0) {
+                        group.centerY.value = margin
+                        group.speedY = kotlin.math.abs(group.speedY)
+                    } else if (group.centerY.value + margin > screenHeightPx - 100f) {
+                        group.centerY.value = screenHeightPx - 100f - margin
+                        group.speedY = -kotlin.math.abs(group.speedY)
+                    }
+
+                    group.monsters.forEachIndexed { i, m ->
+                        m.angle += 0.08f
+                        m.x = group.centerX.value + m.radius * cos(m.angle + i * 2 * PI / 3).toFloat()
+                        m.y.value = group.centerY.value + m.radius * sin(m.angle + i * 2 * PI / 3).toFloat()
+                    }
+
+                    Log.d("MOVEMENT_DEBUG", "Group centerY: ${group.centerY.value}")
                 }
-
-
                 delay(16)
             }
         }
     }
 
-    // Coins
-    val coins = remember {
-        List(5) {
-            val speed = Random.nextFloat() * 2f + 1f
-            Coin2(
-                x = Random.nextFloat() * (screenWidthPx - 50f),
-                y = mutableStateOf(-Random.nextInt(100, 600).toFloat()),
-                speed = speed
-            )
-        }
-    }
-
     coins.forEach { c ->
-        LaunchedEffect(c) {
+        LaunchedEffect(c, timeActive) {
             while (!isGameOver) {
-                if (!c.collected.value) {
+                if (!c.collected.value && !timeActive) {
                     c.y.value += c.speed
                     if (c.y.value > screenHeightPx + 50f) respawnCoin(c, screenWidthPx)
                 }
@@ -375,106 +513,124 @@ fun Level2Screen(
         }
     }
 
-    val bagCoins = remember { mutableStateListOf<BagCoinDisplay2>() }
-
-    // Throttle hit sound
     var lastHitTime by remember { mutableStateOf(0L) }
     fun playHitSound() {
         val now = System.currentTimeMillis()
-        if (now - lastHitTime > 50) {
-            if (sfxEnabled) soundPool.play(hitSoundId, 0.8f, 0.8f, 2, 0, 1f)
+        if (now - lastHitTime > 50 && sfxEnabled) {
+            try {
+                val result = soundPool.play(hitSoundId, 0.8f, 0.8f, 2, 0, 1f)
+                if (result == 0) {
+                    Log.w("SoundPool", "Hit sound not ready yet")
+                }
+            } catch (e: Exception) {
+                Log.e("SoundPool", "Error playing hit sound: ${e.message}")
+            }
             lastHitTime = now
         }
     }
 
+    fun playShootSound() {
+        if (sfxEnabled) {
+            try {
+                val result = soundPool.play(shootSoundId, 0.5f, 0.5f, 1, 0, 1f)
+                if (result == 0) {
+                    Log.w("SoundPool", "Shoot sound not ready yet")
+                }
+            } catch (e: Exception) {
+                Log.e("SoundPool", "Error playing shoot sound: ${e.message}")
+            }
+        }
+    }
 
-    // ==================== COLLISIONS ====================
     LaunchedEffect(Unit) {
         while (!isGameOver) {
+            Log.d("COLLISION_LOOP", "Checking collisions, isGameOver: $isGameOver, monsterCount: ${monsters.size}")
             val bulletsToRemove = mutableListOf<Bullet2>()
 
-            // Plane ↔ Monster
             monsters.forEach { m ->
-                if (m.alive.value && checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)) {
-                    println("💥 Plane hit Monster!")
-                    planeHp.value -= 20
-                    if (planeHp.value <= 0) {
-                        planeHp.value = 0
-                        isGameOver = true
+                if (m.alive.value) {
+                    Log.d("COLLISION_LOOP", "Checking monster at (${m.x}, ${m.y.value}), alive: ${m.alive.value}")
+                    val collision = checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)
+                    Log.d("COLLISION_DEBUG", "Plane: ($planeX, $planeY), Monster: (${m.x}, ${m.y.value}), Collision: $collision, Shield: $shieldActive")
+                    if (collision) {
+                        Log.e("COLLISION_DEBUG", "🚨 COLLISION DETECTED! Plane: ($planeX, $planeY) Monster: (${m.x}, ${m.y.value})")
+                        Log.e("COLLISION_DEBUG", "Shield Active: $shieldActive")
+
+                        if (!shieldActive) {
+                            val oldHp = planeHp.value
+                            planeHp.value -= 600
+                            Log.e("COLLISION_DEBUG", "🔥 PLANE DAMAGED! HP: $oldHp → ${planeHp.value}")
+
+                            if (planeHp.value <= 0) {
+                                planeHp.value = 0
+                                isGameOver = true
+                                Log.e("COLLISION_DEBUG", "💀 PLANE DEAD - GAME OVER!")
+                            }
+                        } else {
+                            Log.e("COLLISION_DEBUG", "🛡️ SHIELD BLOCKED DAMAGE!")
+                        }
+
+                        m.alive.value = false
+                        Log.e("COLLISION_DEBUG", "👻 MONSTER KILLED BY COLLISION")
                     }
-                    m.alive.value = false
-                    respawnMonster(m, screenWidthPx)
                 }
             }
 
-            // Plane ↔ Coin
             coins.forEach { c ->
                 if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
-                    println("💰 Plane collected Coin!")
                     c.collected.value = true
                     totalScore.value += 1
+                    syncScoreToFirebase()
 
-                    // Upload score lên Firebase
-                    if (!playerName.isNullOrBlank()) {
-                        db.collection("rankings")
-                            .whereEqualTo("name", playerName)
-                            .get()
-                            .addOnSuccessListener { docs ->
-                                if (!docs.isEmpty) {
-                                    val docId = docs.documents[0].id
-                                    db.collection("rankings").document(docId)
-                                        .update("score", totalScore.value)
-                                } else {
-                                    db.collection("rankings").add(
-                                        hashMapOf("name" to playerName, "score" to totalScore.value)
-                                    )
-                                }
-                            }
-                    }
-
-                    // Hiển thị BagCoin
-                    val bag =BagCoinDisplay2(c.x, c.y.value, totalScore.value)
-
+                    val bag = BagCoinDisplay2(c.x, c.y.value, 1)
                     bagCoins.add(bag)
 
                     coroutineScope.launch {
-                        delay(1000)                   // BagCoin tồn tại 1 giây
+                        delay(1000)
                         bagCoins.remove(bag)
-                        respawnCoin(c, screenWidthPx) // Sau đó mới respawn coin mới
+                        respawnCoin(c, screenWidthPx)
                     }
                 }
             }
 
-            // Bullet ↔ Monster
             bullets.toList().forEach { b ->
                 monsters.forEach { m ->
                     if (m.alive.value && checkCollisionBulletMonster(b, m)) {
-                        println("🔫 Bullet hit Monster!")
+                        val oldHp = m.hp.value
                         m.hp.value -= 20
+                        Log.d("COLLISION", "💥 MONSTER HIT! HP: $oldHp → ${m.hp.value}")
                         bulletsToRemove.add(b)
                         playHitSound()
                         if (m.hp.value <= 0) {
                             m.hp.value = 0
                             m.alive.value = false
-
+                            Log.d("COLLISION", "☠️ MONSTER KILLED BY BULLET - STAYS DEAD")
                         }
                     }
                 }
             }
             bullets.removeAll(bulletsToRemove)
-// Bullet ↔ Monster loop xong
-            if (monsters.isNotEmpty() && monsters.none { it.alive.value }) {
-                isLevelClear = true
-            }
 
-            delay(16) // ~60fps
+            delay(16)
         }
     }
 
+    LaunchedEffect(Unit) {
+        while (!isGameOver && !isLevelClear) {
+            delay(5000)
+            val allMonstersActuallyDead = monsters.isNotEmpty() && monsters.all {
+                !it.alive.value && it.hp.value <= 0
+            }
 
+            if (allMonstersActuallyDead) {
+                delay(3000)
+                if (monsters.all { !it.alive.value && it.hp.value <= 0 }) {
+                    isLevelClear = true
+                }
+            }
+        }
+    }
 
-
-    // ------------------ UI ------------------
     Box(
         Modifier
             .fillMaxSize()
@@ -487,12 +643,13 @@ fun Level2Screen(
     ) {
         MovingBackgroundOffset2(screenWidthPx)
 
-        val context = LocalContext.current
         IconButton(
             onClick = {
-                val playerName = PrefManager.getPlayerName(context)
-                if (!playerName.isNullOrBlank()) uploadScoreToFirebase(playerName, totalScore.value)
-                onExit()
+                syncScoreToFirebase(force = true)
+                coroutineScope.launch {
+                    delay(500)
+                    onExit()
+                }
             },
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -501,7 +658,6 @@ fun Level2Screen(
             Icon(painterResource(R.drawable.ic_close), contentDescription = "Exit")
         }
 
-        // Sound options
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -533,22 +689,8 @@ fun Level2Screen(
             }
         }
 
-        // Health bar
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 116.dp, end = 16.dp)
-        ) {
-            Canvas(modifier = Modifier.size(width = 200.dp, height = 25.dp)) {
-                drawRoundRect(color = Color.Gray, size = size)
-                val ratio = planeHp.value / 1000f
-                drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
-            }
-        }
-
-        // Monsters
         monsters.forEach { m ->
-            if (!isGameOver && m.alive.value) {   // chỉ vẽ quái còn sống
+            if (!isGameOver && m.alive.value) {
                 Image(
                     painter = painterResource(R.drawable.quaivat1),
                     contentDescription = null,
@@ -562,15 +704,15 @@ fun Level2Screen(
                         .absoluteOffset { IntOffset(m.x.roundToInt(), (m.y.value - 10f).roundToInt()) }
                         .size(width = 80.dp, height = 5.dp)
                 ) {
-                    drawRect(color = Color.Red, size = size)
                     val hpRatio = m.hp.value / 100f
-                    drawRect(color = Color.Green, size = Size(size.width * hpRatio, size.height))
+                    drawRect(
+                        color = Color.Red,
+                        size = Size(size.width * hpRatio, size.height)
+                    )
                 }
             }
         }
 
-
-        // Coins
         coins.forEach { c ->
             if (!c.collected.value && !isGameOver) {
                 Image(
@@ -584,7 +726,6 @@ fun Level2Screen(
             }
         }
 
-        // BagCoins
         bagCoins.forEach { b ->
             Image(
                 painter = painterResource(R.drawable.bagcoin),
@@ -602,7 +743,6 @@ fun Level2Screen(
             )
         }
 
-        // Bullets
         bullets.forEach { b ->
             if (!isGameOver) {
                 Image(
@@ -616,15 +756,89 @@ fun Level2Screen(
             }
         }
 
-        // Plane
         if (!isGameOver) {
-            Image(
-                painter = painterResource(R.drawable.maybay1),
-                contentDescription = null,
+            Box(
                 modifier = Modifier
                     .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }
-                    .size(100.dp),
-                contentScale = ContentScale.Fit
+                    .size(100.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.maybay1),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(alpha = if (shieldActive) 0.7f else 1f),
+                    contentScale = ContentScale.Fit
+                )
+
+                Canvas(
+                    modifier = Modifier
+                        .offset(y = (-15).dp)
+                        .fillMaxWidth()
+                        .height(10.dp)
+                ) {
+                    drawRoundRect(color = Color.Gray, size = size)
+                    val ratio = planeHp.value / 1000f
+                    drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
+                }
+            }
+
+            if (shieldActive) {
+                Canvas(
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset((planeX - 30f).roundToInt(), (planeY - 30f).roundToInt()) }
+                        .size(160.dp)
+                ) {
+                    drawCircle(
+                        color = Color.Cyan.copy(alpha = 0.3f),
+                        radius = 80.dp.toPx(),
+                        center = androidx.compose.ui.geometry.Offset(80.dp.toPx(), 80.dp.toPx())
+                    )
+                    drawCircle(
+                        color = Color.Cyan,
+                        radius = 80.dp.toPx(),
+                        center = androidx.compose.ui.geometry.Offset(80.dp.toPx(), 80.dp.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
+                    )
+                }
+
+                Text(
+                    text = "🛡️ ${shieldTimeLeft.toInt()}s",
+                    color = Color.Cyan,
+                    fontSize = 16.sp,
+                    modifier = Modifier.absoluteOffset {
+                        IntOffset((planeX - 20f).roundToInt(), (planeY - 50f).roundToInt())
+                    }
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+        ) {
+            TopBarUI(
+                bagCoinScore = totalScore.value,
+                chestItems = chestItems,
+                onBuyItem = { item: ChestItem, price: Int ->
+                    if (totalScore.value >= price) {
+                        totalScore.value -= price
+                        chestItems = chestItems.toList() + item
+                        syncScoreToFirebase(force = true)
+                        if (!playerName.isNullOrBlank()) {
+                            FirebaseHelper.updateChest(playerName, chestItems)
+                        }
+                    }
+                },
+                onUseChestItem = { item: ChestItem ->
+                    applyChestItemEffect(item)
+                    val updatedItems = chestItems.toMutableList().also { it.remove(item) }
+                    chestItems = updatedItems
+                    if (!playerName.isNullOrBlank()) {
+                        FirebaseHelper.updateChest(playerName, chestItems)
+                    }
+                }
             )
         }
 
@@ -632,7 +846,7 @@ fun Level2Screen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xAA000000)), // mờ nền
+                    .background(Color(0xAA000000)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -642,7 +856,10 @@ fun Level2Screen(
                         fontSize = 36.sp
                     )
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { onExit() }) {
+                    Button(onClick = {
+                        syncScoreToFirebase(force = true)
+                        onExit()
+                    }) {
                         Text(text = "Thoát", fontSize = 20.sp)
                     }
                 }
@@ -668,7 +885,10 @@ fun Level2Screen(
                         fontSize = 24.sp
                     )
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { onExit() }) {
+                    Button(onClick = {
+                        syncScoreToFirebase(force = true)
+                        onExit()
+                    }) {
                         Text(text = "Thoát", fontSize = 20.sp)
                     }
                 }
@@ -677,8 +897,6 @@ fun Level2Screen(
     }
 }
 
-
-// ---------------------- BACKGROUND ----------------------
 @Composable
 fun MovingBackgroundOffset2(screenWidthPx: Float) {
     val bg = painterResource(R.drawable.nenms)
@@ -710,27 +928,4 @@ fun MovingBackgroundOffset2(screenWidthPx: Float) {
             contentScale = ContentScale.Crop
         )
     }
-}
-private fun uploadScoreToFirebase(playerName: String, score: Int) {
-    val db = FirebaseFirestore.getInstance()
-    db.collection("rankings")
-        .whereEqualTo("name", playerName)
-        .get()
-        .addOnSuccessListener { docs ->
-            if (!docs.isEmpty) {
-                val docId = docs.documents[0].id
-                db.collection("rankings").document(docId)
-                    .update("score", score)
-            } else {
-                // Nếu chưa có, thêm mới
-                val playerData = hashMapOf(
-                    "name" to playerName,
-                    "score" to score
-                )
-                db.collection("rankings").add(playerData)
-            }
-        }
-        .addOnFailureListener { e ->
-            Log.w("Firebase", "Failed to upload score", e)
-        }
 }

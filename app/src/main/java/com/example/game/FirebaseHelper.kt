@@ -12,6 +12,10 @@ object FirebaseHelper {
         return when (name) {
             "Fireworks" -> R.drawable.fireworks
             "Firework2" -> R.drawable.firework2
+            "Bom", "Bomb" -> R.drawable.bom1
+            "Shield", "Khiên" -> R.drawable.shield1
+            "Time", "Đồng hồ", "Clock" -> R.drawable.time
+            "Wall", "Tường" -> R.drawable.wall
             else -> R.drawable.store
         }
     }
@@ -107,6 +111,49 @@ object FirebaseHelper {
             .addOnFailureListener { e ->
                 Log.w("FirebaseHelper", "updateScore failed", e)
             }
+    }
+
+    // ---------------- ENHANCED SCORE SYNC ----------------
+    fun syncScoreWithRetry(playerName: String, score: Int, retryCount: Int = 3) {
+        if (playerName.isBlank()) return
+
+        fun attemptSync(attemptsLeft: Int) {
+            if (attemptsLeft <= 0) {
+                Log.e("FirebaseHelper", "Failed to sync score after all retries")
+                return
+            }
+
+            updateScore(playerName, score)
+            // Add verification after update
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                getScore(playerName) { retrievedScore ->
+                    if (retrievedScore != score && attemptsLeft > 1) {
+                        Log.w("FirebaseHelper", "Score mismatch, retrying... ($attemptsLeft attempts left)")
+                        attemptSync(attemptsLeft - 1)
+                    } else {
+                        Log.d("FirebaseHelper", "Score sync successful: $score")
+                    }
+                }
+            }, 1000)
+        }
+
+        attemptSync(retryCount)
+    }
+
+    // Auto-sync score every 30 seconds during gameplay
+    fun startPeriodicScoreSync(playerName: String, getCurrentScore: () -> Int) {
+        if (playerName.isBlank()) return
+
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val syncRunnable = object : Runnable {
+            override fun run() {
+                val currentScore = getCurrentScore()
+                Log.d("FirebaseHelper", "Periodic sync: $currentScore points for $playerName")
+                updateScore(playerName, currentScore)
+                handler.postDelayed(this, 30000) // Sync every 30 seconds
+            }
+        }
+        handler.post(syncRunnable)
     }
 
     // ---------------- CHEST ----------------
