@@ -5,6 +5,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Text
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -25,7 +26,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +40,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -98,6 +97,7 @@ class Level2Activity : ComponentActivity() {
         setContent {
             val density = LocalDensity.current
             val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+            val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
             Level2Screen(
                 onExit = { finish() },
                 soundPool = soundPool,
@@ -105,6 +105,7 @@ class Level2Activity : ComponentActivity() {
                 hitSoundId = hitSoundId,
                 coinSoundId = coinSoundId,
                 screenWidthPx = screenWidthPx,
+                screenHeightPx = screenHeightPx,
                 mediaPlayer = mediaPlayer
             )
         }
@@ -166,7 +167,7 @@ data class BagCoinDisplay2(
 private fun respawnMonster(m: MonsterState2, screenWidthPx: Float) {
     m.y.value = -Random.nextInt(200, 600).toFloat()
     m.x = Random.nextFloat() * (screenWidthPx - 100f)
-    m.speed = Random.nextFloat() * 1.5f + 1.5f
+    m.speed = Random.nextFloat() * 0.5f + 0.5f
     m.hp.value = 100
     m.alive.value = true
 }
@@ -235,27 +236,23 @@ fun Level2Screen(
     hitSoundId: Int,
     coinSoundId: Int,
     screenWidthPx: Float,
+    screenHeightPx: Float,
     mediaPlayer: MediaPlayer?
 ) {
-    val density = LocalDensity.current
-    val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val playerName = PrefManager.getPlayerName(context)
 
     var musicEnabled by remember { mutableStateOf(true) }
     var sfxEnabled by remember { mutableStateOf(true) }
-    val totalScore = remember { mutableStateOf(0) }
+    var totalScore by remember { mutableStateOf(0) }
+    var currentSessionScore by remember { mutableStateOf(0) }
     var expanded by remember { mutableStateOf(false) }
-
     var isGameOver by remember { mutableStateOf(false) }
     var isLevelClear by remember { mutableStateOf(false) }
     val monsterGroups = remember { mutableStateListOf<MonsterGroup>() }
     val monsters = remember { mutableStateListOf<MonsterState2>() }
-
     var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
-    var showChest by remember { mutableStateOf(false) }
-
     var lastFirebaseSync by remember { mutableStateOf(0L) }
     val firebaseSyncInterval = 5000L
 
@@ -274,8 +271,8 @@ fun Level2Screen(
         val group = MonsterGroup(
             centerX = mutableStateOf(centerX),
             centerY = mutableStateOf(centerY),
-            speedX = (Random.nextFloat() * 180f - 90f),
-            speedY = (Random.nextFloat() * 90f + 30f), // Bias towards downward movement
+            speedX = (Random.nextFloat() * 60f - 30f),
+            speedY = (Random.nextFloat() * 60f + 30f),
             monsters = newMonsters
         )
 
@@ -300,7 +297,7 @@ fun Level2Screen(
             }
             2 -> {
                 centerX = Random.nextFloat() * (screenWidthPx - 400f) + 200f
-                centerY = screenHeightPx - 400f // Start closer to plane
+                centerY = screenHeightPx - 400f
             }
             else -> {
                 centerX = -300f
@@ -315,6 +312,7 @@ fun Level2Screen(
         monsters.clear()
         monsterGroups.clear()
         isLevelClear = false
+        currentSessionScore = 0
     }
 
     LaunchedEffect(Unit) {
@@ -329,10 +327,23 @@ fun Level2Screen(
     LaunchedEffect(playerName) {
         if (!playerName.isNullOrBlank()) {
             FirebaseHelper.getScore(playerName) { score ->
-                totalScore.value = score
+                totalScore = score
             }
             FirebaseHelper.getChestItems(playerName) { items ->
                 chestItems = items
+                if (items.isEmpty()) {
+                    Log.d("CHEST_DEBUG", "🔧 DEBUG: Adding test items to empty chest")
+                    val testItems = listOf(
+                        ChestItem("Pháo sáng", R.drawable.fireworks),
+                        ChestItem("Bom", R.drawable.bom1),
+                        ChestItem("Khiên", R.drawable.shield1)
+                    )
+                    chestItems = testItems
+                }
+            }
+            if (totalScore == 0) {
+                Log.d("CHEST_DEBUG", "🔧 DEBUG: Giving player 50 test coins")
+                totalScore = 50
             }
         }
     }
@@ -341,7 +352,7 @@ fun Level2Screen(
         val currentTime = System.currentTimeMillis()
         if (force || currentTime - lastFirebaseSync > firebaseSyncInterval) {
             if (!playerName.isNullOrBlank()) {
-                FirebaseHelper.updateScore(playerName, totalScore.value)
+                FirebaseHelper.updateScore(playerName, totalScore)
                 lastFirebaseSync = currentTime
             }
         }
@@ -384,6 +395,7 @@ fun Level2Screen(
     val bagCoins = remember { mutableStateListOf<BagCoinDisplay2>() }
 
     fun applyChestItemEffect(item: ChestItem) {
+        Log.d("Level2Screen", "🎁 CHEST ITEM SELECTED: ${item.name} 🎁")
         try {
             ChestItemEffects.applyLevel2Effect(
                 item = item,
@@ -391,26 +403,37 @@ fun Level2Screen(
                 coins = coins,
                 bagCoins = bagCoins,
                 coroutineScope = coroutineScope,
-                screenWidthPx = screenWidthPx,
+                screenWidthPx = screenHeightPx,
                 planeX = planeX,
                 onScoreUpdate = { scoreToAdd ->
-                    totalScore.value += scoreToAdd
+                    Log.d("Level2Screen", "Score update: +$scoreToAdd")
+                    totalScore += scoreToAdd
+                    currentSessionScore += scoreToAdd
                     syncScoreToFirebase()
                 },
                 onShieldActivate = {
+                    Log.d("Level2Screen", "Shield activated!")
                     shieldActive = true
                 },
                 onWallActivate = {
+                    Log.d("Level2Screen", "Wall activated!")
                     wallActive = true
                 },
                 onTimeActivate = {
+                    Log.d("Level2Screen", "Time freeze activated!")
                     timeActive = true
                     timeTimeLeft = 10f
                 },
                 onLevelClear = {
+                    Log.d("Level2Screen", "🏆 LEVEL CLEAR TRIGGERED! Setting isLevelClear = true 🏆")
                     isLevelClear = true
                 }
             )
+            val updatedItems = chestItems.toMutableList().also { it.remove(item) }
+            chestItems = updatedItems
+            if (!playerName.isNullOrBlank()) {
+                FirebaseHelper.updateChest(playerName, updatedItems)
+            }
         } catch (e: Exception) {
             Log.e("LEVEL2_DEBUG", "Exception in Level2 ChestItemEffects: ${e.message}")
         }
@@ -452,6 +475,7 @@ fun Level2Screen(
         while (!isGameOver) {
             bullets.add(Bullet2(planeX - 20f, planeY))
             bullets.add(Bullet2(planeX + 20f, planeY))
+
             delay(350)
         }
     }
@@ -558,7 +582,7 @@ fun Level2Screen(
 
                         if (!shieldActive) {
                             val oldHp = planeHp.value
-                            planeHp.value -= 600
+                            planeHp.value -= 50
                             Log.e("COLLISION_DEBUG", "🔥 PLANE DAMAGED! HP: $oldHp → ${planeHp.value}")
 
                             if (planeHp.value <= 0) {
@@ -579,7 +603,8 @@ fun Level2Screen(
             coins.forEach { c ->
                 if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
                     c.collected.value = true
-                    totalScore.value += 1
+                    totalScore += 1
+                    currentSessionScore += 1
                     syncScoreToFirebase()
 
                     val bag = BagCoinDisplay2(c.x, c.y.value, 1)
@@ -819,11 +844,11 @@ fun Level2Screen(
                 .padding(16.dp)
         ) {
             TopBarUI(
-                bagCoinScore = totalScore.value,
+                bagCoinScore = totalScore,
                 chestItems = chestItems,
                 onBuyItem = { item: ChestItem, price: Int ->
-                    if (totalScore.value >= price) {
-                        totalScore.value -= price
+                    if (totalScore >= price) {
+                        totalScore -= price
                         chestItems = chestItems.toList() + item
                         syncScoreToFirebase(force = true)
                         if (!playerName.isNullOrBlank()) {
@@ -833,11 +858,6 @@ fun Level2Screen(
                 },
                 onUseChestItem = { item: ChestItem ->
                     applyChestItemEffect(item)
-                    val updatedItems = chestItems.toMutableList().also { it.remove(item) }
-                    chestItems = updatedItems
-                    if (!playerName.isNullOrBlank()) {
-                        FirebaseHelper.updateChest(playerName, chestItems)
-                    }
                 }
             )
         }
@@ -880,7 +900,7 @@ fun Level2Screen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Bạn thu được ${totalScore.value} xu",
+                        text = "Bạn thu thêm được $currentSessionScore xu",
                         color = Color.Yellow,
                         fontSize = 24.sp
                     )
@@ -899,7 +919,7 @@ fun Level2Screen(
 
 @Composable
 fun MovingBackgroundOffset2(screenWidthPx: Float) {
-    val bg = painterResource(R.drawable.nenms)
+    val bg = painterResource(R.drawable.nen2)
     val offsetX = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         while (true) {

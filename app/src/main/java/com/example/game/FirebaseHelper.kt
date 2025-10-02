@@ -2,8 +2,10 @@ package com.example.game
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
+import java.util.Date
 
 data class ChestItem(val name: String, val resId: Int)
+data class ScoreEntry(val score: Int, val timestamp: Long)
 
 object FirebaseHelper {
     private val db = FirebaseFirestore.getInstance()
@@ -26,10 +28,9 @@ object FirebaseHelper {
             .addOnSuccessListener { snapshot ->
                 for (doc in snapshot.documents) {
                     val updates = mutableMapOf<String, Any>()
-
                     if (doc.get("score") == null) updates["score"] = 0
                     if (doc.get("chest") == null) updates["chest"] = emptyList<Map<String, Any>>()
-
+                    if (doc.get("scoreHistory") == null) updates["scoreHistory"] = emptyList<Map<String, Any>>()
                     if (updates.isNotEmpty()) {
                         db.collection("rankings").document(doc.id)
                             .update(updates)
@@ -50,7 +51,6 @@ object FirebaseHelper {
 
     fun syncNewPlayer(playerName: String) {
         if (playerName.isBlank()) return
-
         db.collection("rankings")
             .whereEqualTo("name", playerName)
             .get()
@@ -59,7 +59,8 @@ object FirebaseHelper {
                     val newPlayer = hashMapOf(
                         "name" to playerName,
                         "score" to 0,
-                        "chest" to emptyList<Map<String, Any>>()
+                        "chest" to emptyList<Map<String, Any>>(),
+                        "scoreHistory" to emptyList<Map<String, Any>>()
                     )
                     db.collection("rankings").add(newPlayer)
                         .addOnSuccessListener {
@@ -97,13 +98,30 @@ object FirebaseHelper {
             .addOnSuccessListener { docs ->
                 if (!docs.isEmpty) {
                     val docId = docs.documents[0].id
+                    val currentHistory = docs.documents[0].get("scoreHistory") as? List<Map<String, Any>> ?: emptyList()
+                    val newScoreEntry = mapOf(
+                        "score" to score,
+                        "timestamp" to Date().time
+                    )
+                    val updatedHistory = currentHistory + newScoreEntry
                     db.collection("rankings").document(docId)
-                        .update("score", score)
+                        .update(
+                            mapOf(
+                                "score" to score,
+                                "scoreHistory" to updatedHistory
+                            )
+                        )
                 } else {
                     val data = hashMapOf(
                         "name" to playerName,
                         "score" to score,
-                        "chest" to emptyList<Map<String, Any>>()
+                        "chest" to emptyList<Map<String, Any>>(),
+                        "scoreHistory" to listOf(
+                            mapOf(
+                                "score" to score,
+                                "timestamp" to Date().time
+                            )
+                        )
                     )
                     db.collection("rankings").add(data)
                 }
@@ -113,18 +131,88 @@ object FirebaseHelper {
             }
     }
 
+    // ---------------- SCORE HISTORY ----------------
+    fun getScoreHistory(playerName: String, onResult: (List<ScoreEntry>) -> Unit) {
+        db.collection("rankings")
+            .whereEqualTo("name", playerName)
+            .get()
+            .addOnSuccessListener { docs ->
+                if (!docs.isEmpty) {
+                    val historyRaw = docs.documents[0].get("scoreHistory")
+                    val history: List<ScoreEntry> = when (historyRaw) {
+                        is List<*> -> {
+                            if (historyRaw.firstOrNull() is Map<*, *>) {
+                                @Suppress("UNCHECKED_CAST")
+                                val maps = historyRaw as List<Map<String, Any>>
+                                maps.mapNotNull { m ->
+                                    val score = (m["score"] as? Number)?.toInt()
+                                    val timestamp = (m["timestamp"] as? Long)
+                                    if (score != null && timestamp != null) ScoreEntry(score, timestamp) else null
+                                }
+                            } else {
+                                emptyList()
+                            }
+                        }
+                        else -> emptyList()
+                    }
+                    onResult(history)
+                } else {
+                    onResult(emptyList())
+                }
+            }
+            .addOnFailureListener {
+                onResult(emptyList())
+            }
+    }
+
+    // ---------------- TOP 6 SCORES ----------------
+    fun getTop6Scores(onResult: (List<Pair<String, ScoreEntry>>) -> Unit) {
+        db.collection("rankings")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val allScores = mutableListOf<Pair<String, ScoreEntry>>()
+                for (doc in snapshot.documents) {
+                    val playerName = doc.getString("name") ?: continue
+                    val historyRaw = doc.get("scoreHistory")
+                    val history: List<ScoreEntry> = when (historyRaw) {
+                        is List<*> -> {
+                            if (historyRaw.firstOrNull() is Map<*, *>) {
+                                @Suppress("UNCHECKED_CAST")
+                                val maps = historyRaw as List<Map<String, Any>>
+                                maps.mapNotNull { m ->
+                                    val score = (m["score"] as? Number)?.toInt()
+                                    val timestamp = (m["timestamp"] as? Long)
+                                    if (score != null && timestamp != null) ScoreEntry(score, timestamp) else null
+                                }
+                            } else {
+                                emptyList()
+                            }
+                        }
+                        else -> emptyList()
+                    }
+                    history.forEach { scoreEntry ->
+                        allScores.add(Pair(playerName, scoreEntry))
+                    }
+                }
+                // Sort by score in descending order and take top 6
+                val topScores = allScores.sortedByDescending { it.second.score }.take(6)
+                onResult(topScores)
+            }
+            .addOnFailureListener { e ->
+                Log.w("FirebaseHelper", "Failed to fetch top scores", e)
+                onResult(emptyList())
+            }
+    }
+
     // ---------------- ENHANCED SCORE SYNC ----------------
     fun syncScoreWithRetry(playerName: String, score: Int, retryCount: Int = 3) {
         if (playerName.isBlank()) return
-
         fun attemptSync(attemptsLeft: Int) {
             if (attemptsLeft <= 0) {
                 Log.e("FirebaseHelper", "Failed to sync score after all retries")
                 return
             }
-
             updateScore(playerName, score)
-            // Add verification after update
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 getScore(playerName) { retrievedScore ->
                     if (retrievedScore != score && attemptsLeft > 1) {
@@ -136,21 +224,19 @@ object FirebaseHelper {
                 }
             }, 1000)
         }
-
         attemptSync(retryCount)
     }
 
-    // Auto-sync score every 30 seconds during gameplay
+    // Auto-sync score every 30 seconds
     fun startPeriodicScoreSync(playerName: String, getCurrentScore: () -> Int) {
         if (playerName.isBlank()) return
-
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val syncRunnable = object : Runnable {
             override fun run() {
                 val currentScore = getCurrentScore()
                 Log.d("FirebaseHelper", "Periodic sync: $currentScore points for $playerName")
                 updateScore(playerName, currentScore)
-                handler.postDelayed(this, 30000) // Sync every 30 seconds
+                handler.postDelayed(this, 30000)
             }
         }
         handler.post(syncRunnable)
@@ -207,7 +293,8 @@ object FirebaseHelper {
                     val data = hashMapOf(
                         "name" to playerName,
                         "score" to 0,
-                        "chest" to listOf(mapOf("name" to newItem.name, "resId" to newItem.resId))
+                        "chest" to listOf(mapOf("name" to newItem.name, "resId" to newItem.resId)),
+                        "scoreHistory" to emptyList<Map<String, Any>>()
                     )
                     db.collection("rankings").add(data)
                 }

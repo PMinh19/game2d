@@ -40,7 +40,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
+        <activity android:name=".Top6Activity" />
+        <activity android:name=".RankScreenActivity" />
+        <activity android:name=".SettingScreenActivity" />
     </application>
 
 </manifest>

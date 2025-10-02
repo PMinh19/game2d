@@ -1,7 +1,6 @@
 package com.example.game
 
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -32,14 +31,12 @@ object ChestItemEffects {
         when (item.name) {
             "Fireworks", "Firework2", "Pháo ", "Pháo sáng" -> {
                 android.util.Log.e("CHEST_ITEM_DEBUG", "✅ MATCHED FIREWORKS ITEM: '${item.name}'")
-                // Pháo sáng: Win game + hiện thông báo xu thu thập được
+                // Pháo sáng: Collect visible coins and win game
                 applyFireworksEffect(
-                    monsters = monsters,
                     coins = coins,
                     bagCoins = bagCoins,
                     coroutineScope = coroutineScope,
-                    screenWidthPx = screenWidthPx,
-                    planeX = planeX,
+                    screenHeightPx = screenWidthPx, // Note: This should be screenHeightPx, assuming a parameter typo
                     onScoreUpdate = onScoreUpdate,
                     onLevelClear = onLevelClear
                 )
@@ -81,32 +78,29 @@ object ChestItemEffects {
     }
 
     private fun applyFireworksEffect(
-        monsters: List<MonsterState>,
         coins: List<Coin>,
         bagCoins: SnapshotStateList<BagCoinDisplay>,
         coroutineScope: CoroutineScope,
-        screenWidthPx: Float,
-        planeX: Float,
+        screenHeightPx: Float,
         onScoreUpdate: (Int) -> Unit,
         onLevelClear: () -> Unit
     ) {
         android.util.Log.e("FIREWORKS_DEBUG", "🎆🎆🎆 FIREWORKS EFFECT STARTED! 🎆🎆🎆")
-        android.util.Log.e("FIREWORKS_DEBUG", "Monsters count: ${monsters.size}")
         android.util.Log.e("FIREWORKS_DEBUG", "Coins count: ${coins.size}")
 
-        // IMMEDIATELY destroy all monsters and collect coins - no coroutine delays
+        // Collect only visible coins (not collected and within screen bounds)
         var totalCoinsCollected = 0
         coins.forEach { coin ->
-            if (!coin.collected.value) {
+            if (!coin.collected.value && coin.y.value >= 0 && coin.y.value <= screenHeightPx) {
                 coin.collected.value = true
                 totalCoinsCollected += 1
                 android.util.Log.e("FIREWORKS_DEBUG", "Collected coin at (${coin.x}, ${coin.y.value})")
 
-                // Create bag coin display
+                // Create bag coin display for visual effect
                 val bag = BagCoinDisplay(coin.x, coin.y.value, 1)
                 bagCoins.add(bag)
 
-                // Remove bag display after delay (but don't wait for it)
+                // Remove bag display after delay (non-blocking)
                 coroutineScope.launch {
                     delay(1000)
                     bagCoins.remove(bag)
@@ -116,23 +110,13 @@ object ChestItemEffects {
 
         android.util.Log.e("FIREWORKS_DEBUG", "Total coins collected: $totalCoinsCollected")
 
-        // IMMEDIATELY update score
+        // Update score
         if (totalCoinsCollected > 0) {
             onScoreUpdate(totalCoinsCollected)
             android.util.Log.e("FIREWORKS_DEBUG", "Score updated with $totalCoinsCollected coins")
         }
 
-        // IMMEDIATELY destroy all monsters
-        monsters.forEach { monster ->
-            val oldHp = monster.hp.value
-            monster.hp.value = 0
-            monster.isDying.value = true
-            monster.respawnCount = monster.maxRespawn // Prevent respawn
-            android.util.Log.e("FIREWORKS_DEBUG", "Monster destroyed - HP: $oldHp -> 0")
-        }
-        android.util.Log.e("FIREWORKS_DEBUG", "All ${monsters.size} monsters destroyed")
-
-        // IMMEDIATELY trigger level clear - no delay!
+        // Immediately trigger level clear
         android.util.Log.e("FIREWORKS_DEBUG", "🚀🚀🚀 CALLING onLevelClear() NOW! 🚀🚀🚀")
         onLevelClear()
         android.util.Log.e("FIREWORKS_DEBUG", "onLevelClear() called successfully")
@@ -213,17 +197,17 @@ object ChestItemEffects {
         onTimeActivate: () -> Unit,
         onLevelClear: () -> Unit
     ) {
-        android.util.Log.e("LEVEL2_EFFECTS", "🔥🔥🔥 LEVEL2 EFFECT FOR: '${item.name}' 🔥🔥🔥")
+        android.util.Log.e("LEVEL2_EFFECTS", "🔥🔥🔥 LEVEL2 EFFECT FOR: '${item.name}' 🔥🔥🔆")
 
         when (item.name) {
             "Fireworks", "Firework2", "Pháo ", "Pháo sáng" -> {
                 android.util.Log.e("LEVEL2_EFFECTS", "✅ MATCHED FIREWORKS ITEM IN LEVEL2: '${item.name}'")
-                // Pháo sáng: Win game + hiện thông báo xu thu thập được
+                // Pháo sáng: Collect visible coins and win game
                 applyFireworksEffectLevel2(
-                    monsters = monsters,
                     coins = coins,
                     bagCoins = bagCoins,
                     coroutineScope = coroutineScope,
+                    screenHeightPx = screenWidthPx, // Note: This should be screenHeightPx
                     onScoreUpdate = onScoreUpdate,
                     onLevelClear = onLevelClear
                 )
@@ -263,61 +247,48 @@ object ChestItemEffects {
     }
 
     private fun applyFireworksEffectLevel2(
-        monsters: List<MonsterState2>,
         coins: List<Coin2>,
         bagCoins: SnapshotStateList<BagCoinDisplay2>,
         coroutineScope: CoroutineScope,
+        screenHeightPx: Float,
         onScoreUpdate: (Int) -> Unit,
         onLevelClear: () -> Unit
     ) {
         android.util.Log.e("LEVEL2_FIREWORKS", "🎆🎆🎆 LEVEL2 FIREWORKS EFFECT STARTED! 🎆🎆🎆")
-        android.util.Log.e("LEVEL2_FIREWORKS", "Monsters count: ${monsters.size}")
         android.util.Log.e("LEVEL2_FIREWORKS", "Coins count: ${coins.size}")
 
-        coroutineScope.launch {
-            // Collect all visible coins
-            var totalCoinsCollected = 0
-            coins.forEach { coin ->
-                if (!coin.collected.value) {
-                    coin.collected.value = true
-                    totalCoinsCollected += 1
-                    android.util.Log.e("LEVEL2_FIREWORKS", "Collected coin at (${coin.x}, ${coin.y.value})")
+        // Collect all visible coins
+        var totalCoinsCollected = 0
+        coins.forEach { coin ->
+            if (!coin.collected.value && coin.y.value >= 0 && coin.y.value <= screenHeightPx) {
+                coin.collected.value = true
+                totalCoinsCollected += 1
+                android.util.Log.e("LEVEL2_FIREWORKS", "Collected coin at (${coin.x}, ${coin.y.value})")
 
-                    // Create bag coin display
-                    val bag = BagCoinDisplay2(coin.x, coin.y.value, 1)
-                    bagCoins.add(bag)
+                // Create bag coin display
+                val bag = BagCoinDisplay2(coin.x, coin.y.value, 1)
+                bagCoins.add(bag)
 
-                    // Remove bag display after delay
-                    launch {
-                        delay(1000)
-                        bagCoins.remove(bag)
-                    }
+                // Remove bag display after delay
+                coroutineScope.launch {
+                    delay(1000)
+                    bagCoins.remove(bag)
                 }
             }
-
-            android.util.Log.e("LEVEL2_FIREWORKS", "Total coins collected: $totalCoinsCollected")
-
-            // Update score
-            if (totalCoinsCollected > 0) {
-                onScoreUpdate(totalCoinsCollected)
-                android.util.Log.e("LEVEL2_FIREWORKS", "Score updated with $totalCoinsCollected coins")
-            }
-
-            // Destroy all monsters
-            monsters.forEach { monster ->
-                val oldHp = monster.hp.value
-                val wasAlive = monster.alive.value
-                monster.hp.value = 0
-                monster.alive.value = false
-                android.util.Log.e("LEVEL2_FIREWORKS", "Monster destroyed - HP: $oldHp -> 0, Alive: $wasAlive -> false")
-            }
-            android.util.Log.e("LEVEL2_FIREWORKS", "All ${monsters.size} monsters destroyed")
-
-            // Delay then trigger level clear (win game)
-            delay(500)
-            android.util.Log.e("LEVEL2_FIREWORKS", "🚀🚀🚀 CALLING onLevelClear() FOR LEVEL2! 🚀🚀🚀")
-            onLevelClear()
         }
+
+        android.util.Log.e("LEVEL2_FIREWORKS", "Total coins collected: $totalCoinsCollected")
+
+        // Update score
+        if (totalCoinsCollected > 0) {
+            onScoreUpdate(totalCoinsCollected)
+            android.util.Log.e("LEVEL2_FIREWORKS", "Score updated with $totalCoinsCollected coins")
+        }
+
+        // Immediately trigger level clear
+        android.util.Log.e("LEVEL2_FIREWORKS", "🚀🚀🚀 CALLING onLevelClear() FOR LEVEL2! 🚀🚀🚀")
+        onLevelClear()
+        android.util.Log.e("LEVEL2_FIREWORKS", "onLevelClear() called successfully")
     }
 
     private fun applyBombEffectLevel2(

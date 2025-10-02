@@ -1,5 +1,6 @@
 package com.example.game
 
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -45,8 +46,6 @@ import android.graphics.RectF
 import androidx.compose.ui.platform.LocalContext
 import com.example.game.TopBarComponent.TopBarUI
 
-
-import com.example.game.FirebaseHelper
 class GameScreenActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private lateinit var soundPool: android.media.SoundPool
@@ -146,42 +145,29 @@ private fun getBoundingBox(x: Float, y: Float, width: Float, height: Float): Rec
 }
 
 // ---------------------- HELPER FUNCTIONS ----------------------
-// These functions are needed for normal game logic (not just chest items)
 private suspend fun respawnMonster(m: MonsterState, screenWidthPx: Float, planeX: Float) {
     if (m.respawnCount < m.maxRespawn && !m.isRespawning.value) {
         m.isRespawning.value = true
         m.isDying.value = true
-
-        // Delay để tránh respawn ngay lập tức
         delay(300)
-
-        // Reset vị trí y
         m.y.value = -Random.nextInt(200, 800).toFloat()
-
-        // Đảm bảo quái không tái sinh gần máy bay (tối thiểu 200px)
         var attempts = 0
         do {
             m.x = Random.nextFloat() * (screenWidthPx - 100f)
             attempts++
         } while (abs(m.x - planeX) < 200f && attempts < 10)
-
-        // Nếu sau 10 lần thử vẫn không tìm được vị trí an toàn, đặt ở góc
         if (attempts >= 10) {
             m.x = if (planeX > screenWidthPx / 2) 50f else screenWidthPx - 150f
         }
-
         m.speed = Random.nextFloat() * 1.5f + 1.5f
         m.hp.value = 100
         m.respawnCount++
-
-        // Delay thêm để đảm bảo quái đã ở vị trí mới
         delay(100)
-
         m.isDying.value = false
         m.isRespawning.value = false
     } else {
         m.hp.value = 0
-        m.y.value = screenWidthPx * 2  // đưa ra khỏi màn hình
+        m.y.value = screenWidthPx * 2
         m.isDying.value = true
     }
 }
@@ -201,7 +187,6 @@ private fun checkCollisionPlaneMonster(
     monster: MonsterState
 ): Boolean {
     if (monster.isDying.value || monster.isRespawning.value || monster.hp.value <= 0) return false
-
     val planeBox = getBoundingBox(planeX, planeY, planeWidth, planeHeight)
     val monsterBox = getBoundingBox(monster.x, monster.y.value, 80f, 80f)
     return RectF.intersects(planeBox, monsterBox)
@@ -228,11 +213,11 @@ private fun checkCollisionBulletMonster(
     monsterHeight: Float = 80f
 ): Boolean {
     if (monster.isDying.value || monster.isRespawning.value || monster.hp.value <= 0) return false
-
     val bulletBox = getBoundingBox(bullet.x, bullet.y, bulletWidth, bulletHeight)
     val monsterBox = getBoundingBox(monster.x, monster.y.value, monsterWidth, monsterHeight)
     return RectF.intersects(bulletBox, monsterBox)
 }
+
 @Composable
 fun GameScreen(
     onExit: () -> Unit,
@@ -255,59 +240,48 @@ fun GameScreen(
     var totalScore by remember { mutableStateOf(0) }
     var expanded by remember { mutableStateOf(false) }
     var isGameOver by remember { mutableStateOf(false) }
-
-    // Shield and Wall effects (must be declared before any usage)
     var shieldActive by remember { mutableStateOf(false) }
     var wallActive by remember { mutableStateOf(false) }
     var shieldTimeLeft by remember { mutableStateOf(0f) }
     var wallTimeLeft by remember { mutableStateOf(0f) }
-
-    // Chest state
     var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
     var showChest by remember { mutableStateOf(false) }
     var timeActive by remember { mutableStateOf(false) }
     var timeTimeLeft by remember { mutableStateOf(0f) }
     var currentSessionScore by remember { mutableStateOf(0) }
+    var isLevelClear by remember { mutableStateOf(false) }
 
-    // Load score từ Firebase (khôi phục hệ thống cũ)
+    // Load score từ Firebase
     LaunchedEffect(playerName) {
         if (!playerName.isNullOrBlank()) {
-            android.util.Log.e("FIREBASE_DEBUG", "🔥 Loading data for player: '$playerName'")
-
+            Log.e("FIREBASE_DEBUG", "🔥 Loading data for player: '$playerName'")
             FirebaseHelper.syncNewPlayer(playerName)
-
             FirebaseHelper.getScore(playerName) { score ->
-                android.util.Log.e("FIREBASE_DEBUG", "✅ Score loaded: $score")
+                Log.e("FIREBASE_DEBUG", "✅ Score loaded: $score")
                 totalScore = score
             }
-
             FirebaseHelper.getChestItems(playerName) { items ->
-                android.util.Log.e("FIREBASE_DEBUG", "✅ Chest items loaded: ${items.size} items")
+                Log.e("FIREBASE_DEBUG", "✅ Chest items loaded: ${items.size} items")
                 items.forEach { item ->
-                    android.util.Log.e("FIREBASE_DEBUG", "   - Item: ${item.name} (resId: ${item.resId})")
+                    Log.e("FIREBASE_DEBUG", "   - Item: ${item.name} (resId: ${item.resId})")
                 }
                 chestItems = items
-
-                // DEBUG: Add test items if chest is empty
                 if (items.isEmpty()) {
-                    android.util.Log.e("FIREBASE_DEBUG", "🔧 DEBUG: Adding test items to empty chest")
+                    Log.e("FIREBASE_DEBUG", "🔧 DEBUG: Adding test items to empty chest")
                     val testItems = listOf(
                         ChestItem("Pháo sáng", R.drawable.fireworks),
                         ChestItem("Bom", R.drawable.bom1),
                         ChestItem("Khiên", R.drawable.shield1)
                     )
                     chestItems = testItems
-                    // Don't save to Firebase, just for local testing
                 }
             }
-
-            // DEBUG: Give player some coins if they have none
             if (totalScore == 0) {
-                android.util.Log.e("FIREBASE_DEBUG", "🔧 DEBUG: Giving player 50 test coins")
+                Log.e("FIREBASE_DEBUG", "🔧 DEBUG: Giving player 50 test coins")
                 totalScore = 50
             }
         } else {
-            android.util.Log.e("FIREBASE_DEBUG", "❌ No player name found!")
+            Log.e("FIREBASE_DEBUG", "❌ No player name found!")
         }
     }
 
@@ -315,8 +289,7 @@ fun GameScreen(
     LaunchedEffect(musicEnabled) {
         try {
             if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
     }
 
     // Plane
@@ -356,10 +329,10 @@ fun GameScreen(
     }
 
     monsters.forEach { m ->
-        LaunchedEffect(m, timeActive) { // Thêm timeActive vào key
+        LaunchedEffect(m, timeActive) {
             while (!isGameOver) {
                 if (!m.isDying.value && !m.isRespawning.value && m.hp.value > 0) {
-                    if (!timeActive) { // Chỉ di chuyển khi timeActive = false
+                    if (!timeActive) {
                         val wallY = planeY - 50f
                         if (wallActive && m.y.value + 80f >= wallY) {
                             m.y.value = wallY - 80f
@@ -386,7 +359,6 @@ fun GameScreen(
             }
         }
     }
-
 
     // Coins
     val coins = remember {
@@ -424,8 +396,6 @@ fun GameScreen(
         }
     }
 
-    var isLevelClear by remember { mutableStateOf(false) }
-
     // Countdown timers
     LaunchedEffect(shieldActive) {
         if (shieldActive) {
@@ -450,10 +420,10 @@ fun GameScreen(
     }
 
     fun applyChestItemEffect(item: ChestItem) {
-        android.util.Log.d("GameScreen", "🎁 CHEST ITEM SELECTED: ${item.name} 🎁")
-        android.util.Log.e("DEBUG_CRITICAL", "⚡⚡⚡ ABOUT TO CALL ChestItemEffects.applyGameEffect() ⚡⚡⚡")
-
+        Log.d("GameScreen", "🎁 CHEST ITEM SELECTED: ${item.name} 🎁")
+        Log.e("DEBUG_CRITICAL", "⚡⚡⚡ ABOUT TO CALL ChestItemEffects.applyGameEffect() ⚡⚡⚡")
         try {
+            // Delegate all item effects to ChestItemEffects.applyGameEffect
             ChestItemEffects.applyGameEffect(
                 item = item,
                 monsters = monsters,
@@ -463,32 +433,41 @@ fun GameScreen(
                 screenWidthPx = screenWidthPx,
                 planeX = planeX,
                 onScoreUpdate = { scoreToAdd ->
-                    android.util.Log.d("GameScreen", "Score update: +$scoreToAdd")
+                    Log.d("GameScreen", "Score update: +$scoreToAdd")
                     totalScore += scoreToAdd
                     currentSessionScore += scoreToAdd
+                    if (!playerName.isNullOrBlank()) {
+                        FirebaseHelper.updateScore(playerName, totalScore)
+                    }
                 },
                 onShieldActivate = {
-                    android.util.Log.d("GameScreen", "Shield activated!")
+                    Log.d("GameScreen", "Shield activated!")
                     shieldActive = true
                 },
                 onWallActivate = {
-                    android.util.Log.d("GameScreen", "Wall activated!")
+                    Log.d("GameScreen", "Wall activated!")
                     wallActive = true
                 },
                 onTimeActivate = {
-                    android.util.Log.d("GameScreen", "Time freeze activated!")
+                    Log.d("GameScreen", "Time freeze activated!")
                     timeActive = true
                     timeTimeLeft = 10f
                 },
                 onLevelClear = {
-                    android.util.Log.d("GameScreen", "🏆 LEVEL CLEAR TRIGGERED! Setting isLevelClear = true 🏆")
+                    Log.d("GameScreen", "🏆 LEVEL CLEAR TRIGGERED! Setting isLevelClear = true 🏆")
                     isLevelClear = true
                 }
             )
-            android.util.Log.e("DEBUG_CRITICAL", "✅✅✅ ChestItemEffects.applyGameEffect() COMPLETED SUCCESSFULLY ✅✅✅")
+            // Remove the used item from chestItems
+            val updatedItems = chestItems.toMutableList().also { it.remove(item) }
+            chestItems = updatedItems
+            if (!playerName.isNullOrBlank()) {
+                FirebaseHelper.updateChest(playerName, updatedItems)
+            }
+            Log.e("DEBUG_CRITICAL", "✅✅✅ ChestItemEffects.applyGameEffect() COMPLETED SUCCESSFULLY ✅✅✅")
         } catch (e: Exception) {
-            android.util.Log.e("DEBUG_CRITICAL", "❌❌❌ EXCEPTION IN ChestItemEffects.applyGameEffect(): ${e.message} ❌❌❌")
-            android.util.Log.e("DEBUG_CRITICAL", "Stack trace: ${e.stackTrace.joinToString("\n")}")
+            Log.e("DEBUG_CRITICAL", "❌❌❌ EXCEPTION IN ChestItemEffects.applyGameEffect(): ${e.message} ❌❌❌")
+            Log.e("DEBUG_CRITICAL", "Stack trace: ${e.stackTrace.joinToString("\n")}")
         }
     }
 
@@ -503,21 +482,15 @@ fun GameScreen(
                         m.hp.value -= 20
                         bulletIterator.remove()
                         playHitSound()
-
                         if (m.hp.value <= 0) {
-                            coroutineScope.launch {
-                                respawnMonster(m, screenWidthPx, planeX)
-                            }
+                            coroutineScope.launch { respawnMonster(m, screenWidthPx, planeX) }
                         }
                     }
                 }
             }
-
-            // Check level clear
             if (monsters.all { it.hp.value <= 0 && it.respawnCount >= it.maxRespawn }) {
                 isLevelClear = true
             }
-
             delay(16)
         }
     }
@@ -543,7 +516,7 @@ fun GameScreen(
         }
     }
 
-    // Collision plane ↔ coins (sử dụng FirebaseHelper thống nhất)
+    // Collision plane ↔ coins
     LaunchedEffect(Unit) {
         while (!isGameOver) {
             coins.forEach { c ->
@@ -551,17 +524,12 @@ fun GameScreen(
                     c.collected.value = true
                     totalScore += 1
                     currentSessionScore += 1
-
-                    // Create BagCoinDisplay with +1 score (not total score)
                     val bag = BagCoinDisplay(c.x, c.y.value, 1)
                     bagCoins.add(bag)
                     coroutineScope.launch { delay(1000); bagCoins.remove(bag) }
-
-                    // Sử dụng FirebaseHelper thống nhất thay vì db trực tiếp
                     if (!playerName.isNullOrBlank()) {
                         FirebaseHelper.updateScore(playerName, totalScore)
                     }
-
                     respawnCoin(c, screenWidthPx)
                 }
             }
@@ -569,7 +537,7 @@ fun GameScreen(
         }
     }
 
-    // ------------------ UI ------------------
+    // UI
     val dragModifier = if (!showChest) Modifier.pointerInput(Unit) {
         detectDragGestures { change, dragAmount ->
             if (!isGameOver) planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - 100f)
@@ -584,7 +552,6 @@ fun GameScreen(
     ) {
         val bg = painterResource(R.drawable.nen2)
         val offsetY = remember { Animatable(0f) }
-
         LaunchedEffect(Unit) {
             while (true) {
                 offsetY.animateTo(
@@ -596,7 +563,6 @@ fun GameScreen(
         }
 
         Box {
-            // Hình nền chính
             Image(
                 painter = bg,
                 contentDescription = null,
@@ -605,7 +571,6 @@ fun GameScreen(
                     .offset { IntOffset(0, offsetY.value.roundToInt()) },
                 contentScale = ContentScale.Crop
             )
-            // Hình nền phụ để tạo hiệu ứng lặp
             Image(
                 painter = bg,
                 contentDescription = null,
@@ -615,7 +580,6 @@ fun GameScreen(
                 contentScale = ContentScale.Crop
             )
         }
-
 
         // Draw monsters
         monsters.forEach { m ->
@@ -642,18 +606,16 @@ fun GameScreen(
                     drawRect(
                         color = Color.Red,
                         size = Size(size.width * hpRatio, size.height)
-                    ) // máu hiện tại
+                    )
                 }
-
             }
         }
 
-        // Draw coins (blocked by wall)
+        // Draw coins
         coins.forEach { c ->
             if (!c.collected.value && !isGameOver) {
                 val wallY = planeY - 50f
                 if (wallActive && c.y.value + 40f >= wallY) {
-                    // Block coin at wall line
                     c.y.value = wallY - 40f
                 }
                 Image(
@@ -711,18 +673,15 @@ fun GameScreen(
                     .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }
                     .size(100.dp)
             ) {
-                // Plane image
                 Image(
                     painter = painterResource(R.drawable.maybay1),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )
-
-                // Health bar trên plane
                 Canvas(
                     modifier = Modifier
-                        .offset(y = (-15).dp) // đặt trên plane, đổi +15.dp để dưới plane
+                        .offset(y = (-15).dp)
                         .fillMaxWidth()
                         .height(10.dp)
                 ) {
@@ -730,8 +689,6 @@ fun GameScreen(
                     val ratio = planeHp.value / 1000f
                     drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
                 }
-
-                // Shield animation
                 if (shieldActive) {
                     Canvas(modifier = Modifier.matchParentSize()) {
                         drawCircle(
@@ -742,8 +699,6 @@ fun GameScreen(
                     }
                 }
             }
-
-            // Wall vẽ riêng vẫn được
             if (wallActive) {
                 Image(
                     painter = painterResource(R.drawable.wall),
@@ -767,61 +722,48 @@ fun GameScreen(
             }
         }
 
-        // TopBarUI - layer trên cùng với positioning tuyệt đối
+        // TopBarUI
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(16.dp)
-        )
-        {
-            android.util.Log.d("GameScreen", "🎮 RENDERING TopBarUI with ${chestItems.size} chest items")
+        ) {
+            Log.d("GameScreen", "🎮 RENDERING TopBarUI with ${chestItems.size} chest items")
             TopBarUI(
                 bagCoinScore = totalScore,
                 chestItems = chestItems,
                 onBuyItem = { item: ChestItem, price: Int ->
-                    android.util.Log.e("STORE_DEBUG", "🛒 TRYING TO BUY: ${item.name} for $price coins")
-                    android.util.Log.e("STORE_DEBUG", "Current score: $totalScore")
+                    Log.e("STORE_DEBUG", "🛒 TRYING TO BUY: ${item.name} for $price coins")
+                    Log.e("STORE_DEBUG", "Current score: $totalScore")
                     val playerName = PrefManager.getPlayerName(context)
                     if (!playerName.isNullOrBlank()) {
                         if (totalScore >= price) {
                             totalScore -= price
                             chestItems = chestItems.toList() + item
-                            android.util.Log.e("STORE_DEBUG", "✅ PURCHASE SUCCESSFUL! Item added to chest")
-                            android.util.Log.e("STORE_DEBUG", "New chest size: ${chestItems.size}")
+                            Log.e("STORE_DEBUG", "✅ PURCHASE SUCCESSFUL! Item added to chest")
+                            Log.e("STORE_DEBUG", "New chest size: ${chestItems.size}")
                             FirebaseHelper.updateScore(playerName, totalScore)
                             FirebaseHelper.updateChest(playerName, chestItems)
                         } else {
-                            android.util.Log.e("STORE_DEBUG", "❌ NOT ENOUGH COINS! Need $price, have $totalScore")
+                            Log.e("STORE_DEBUG", "❌ NOT ENOUGH COINS! Need $price, have $totalScore")
                         }
                     } else {
-                        android.util.Log.e("STORE_DEBUG", "❌ NO PLAYER NAME!")
+                        Log.e("STORE_DEBUG", "❌ NO PLAYER NAME!")
                     }
                 },
                 onUseChestItem = { item: ChestItem ->
-                    android.util.Log.d("GameScreen", "📦 TOPBAR CALLBACK TRIGGERED for item: ${item.name}")
-                    // Apply chest item effect in game
+                    Log.d("GameScreen", "📦 TOPBAR CALLBACK TRIGGERED for item: ${item.name}")
                     applyChestItemEffect(item)
-                    val updatedItems = chestItems.toMutableList().also { it.remove(item) }
-                    chestItems = updatedItems
-                    val playerName = PrefManager.getPlayerName(context)
-                    if (!playerName.isNullOrBlank()) {
-                        // IMPORTANT: Sync score ngay sau khi dùng item để đảm bảo không mất điểm
-                        FirebaseHelper.syncScoreWithRetry(playerName, totalScore, retryCount = 2)
-                        FirebaseHelper.updateChest(playerName, chestItems)
-                    }
                 }
             )
         }
 
-        // Exit button (sử dụng FirebaseHelper thống nhất) - FIX: Đợi sync xong mới thoát
+        // Exit button
         IconButton(
             onClick = {
                 val playerName = PrefManager.getPlayerName(context)
                 if (!playerName.isNullOrBlank()) {
-                    // Sử dụng syncScoreWithRetry để đảm bảo sync thành công
                     FirebaseHelper.syncScoreWithRetry(playerName, totalScore, retryCount = 1)
-
-                    // Đợi 500ms để đảm bảo Firebase sync xong
                     coroutineScope.launch {
                         delay(500)
                         onExit()
@@ -880,7 +822,7 @@ fun GameScreen(
                     text = "Shield: ${String.format("%.1f", shieldTimeLeft)}s",
                     color = Color.Cyan,
                     fontSize = 18.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -924,7 +866,6 @@ fun GameScreen(
             }
         }
 
-
         // GAME OVER overlay
         if (isGameOver) {
             Box(
@@ -934,24 +875,20 @@ fun GameScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    // Thay Text bằng Image
                     Image(
                         painter = painterResource(R.drawable.game_over),
                         contentDescription = "Game Over",
                         modifier = Modifier
-                            .width(500.dp) // điều chỉnh kích thước phù hợp
+                            .width(500.dp)
                             .height(300.dp)
                     )
-
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Bạn thu thêm được ${currentSessionScore} xu",
+                        text = "Bạn thu thêm được $currentSessionScore xu",
                         color = Color.Yellow,
                         fontSize = 24.sp
                     )
-
                     Spacer(modifier = Modifier.height(24.dp))
-
                     Button(onClick = { onExit() }) {
                         Text(text = "Thoát", fontSize = 20.sp)
                     }
@@ -959,8 +896,7 @@ fun GameScreen(
             }
         }
 
-
-
+        // LEVEL CLEAR overlay with win image
         if (isLevelClear) {
             Box(
                 modifier = Modifier
@@ -969,20 +905,30 @@ fun GameScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "🎉 Chúc mừng bạn đã chiến thắng! 🎉",
-                        color = Color.Green,
-                        fontSize = 32.sp
+                    Image(
+                        painter = painterResource(R.drawable.win),
+                        contentDescription = "You Win",
+                        modifier = Modifier
+                            .width(500.dp)
+                            .height(300.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Bạn thu thêm được được ${currentSessionScore}  xu",
+                        text = "Bạn thu thêm được $currentSessionScore xu",
                         color = Color.Yellow,
                         fontSize = 24.sp
                     )
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { onExit() }) {
-                        Text(text = "Thoát", fontSize = 20.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Button(onClick = { onExit() }) {
+                            Text(text = "Thoát", fontSize = 20.sp)
+                        }
+                        Button(onClick = {
+                            val intent = Intent(context, Top6Activity::class.java)
+                            context.startActivity(intent)
+                        }) {
+                            Text(text = "Top 6", fontSize = 20.sp)
+                        }
                     }
                 }
             }
@@ -1019,12 +965,6 @@ fun GameScreen(
                             )
                             Button(onClick = {
                                 applyChestItemEffect(item)
-                                val updated = chestItems.toMutableList().also { it.remove(item) }
-                                chestItems = updated
-                                if (!playerName.isNullOrBlank()) {
-                                    FirebaseHelper.updateChest(playerName, updated)
-                                    FirebaseHelper.updateScore(playerName, totalScore)
-                                }
                                 showChest = false
                             }) { Text("Chọn") }
                         }
