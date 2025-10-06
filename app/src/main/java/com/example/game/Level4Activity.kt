@@ -20,6 +20,7 @@ import com.example.game.ui.PlaneUI
 import com.example.game.ui.WallUI
 import com.example.game.ui.GrowingMonsterUI
 import com.example.game.ui.SoundControlButton
+import com.example.game.ui.BagCoinAnimatedView
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -28,6 +29,9 @@ class Level4Activity : BaseGameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initAudio()
+
+        // Initialize AI Avoidance Helper for smart bullet dodging
+        AIAvoidanceHelper.init(this)
 
         setContent {
             val density = LocalDensity.current
@@ -43,6 +47,11 @@ class Level4Activity : BaseGameActivity() {
                 onExit = { finish() }
             )
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        AIAvoidanceHelper.release()
     }
 }
 
@@ -108,8 +117,8 @@ fun Level4Game(
                 speed = Random.nextFloat() * 1.2f + 1.0f,
                 hp = mutableStateOf(80),
                 initialSize = 60f,
-                maxSize = 600f, // Gấp 10 lần: 60 * 10 = 600
-                growthRate = 0.5f // Tăng tốc độ lớn lên để đạt 600px
+                maxSize = 600f,
+                growthRate = 0.5f
             )
         }
     }
@@ -135,7 +144,6 @@ fun Level4Game(
     LaunchedEffect(Unit) {
         if (!playerName.isNullOrBlank()) {
             FirebaseHelper.syncNewPlayer(playerName)
-            FirebaseHelper.getScore(playerName) { totalScore = it }
             FirebaseHelper.getChestItems(playerName) { chestItems = it }
         }
     }
@@ -149,6 +157,7 @@ fun Level4Game(
         }
     }
 
+    // --- Bullet movement ---
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             bullets.forEach { it.y -= 25f }
@@ -157,7 +166,7 @@ fun Level4Game(
         }
     }
 
-    // --- Monster movement + growing ---
+    // --- Monster movement + growing + AI evasion ---
     growingMonsters.forEachIndexed { index, m ->
         LaunchedEffect(m, isGameOver, isLevelClear) {
             while (!isGameOver && !isLevelClear) {
@@ -172,7 +181,19 @@ fun Level4Game(
                     m.alive.value = true
                 }
 
-                if (m.alive.value && m.hp.value > 0 && !timeActive) {
+                if (m.alive.value) {
+                    // AI-based evasion: monster tries to dodge bullets intelligently
+                    val evasion = AIAvoidanceHelper.calculateEvasion(
+                        monsterX = m.x,
+                        monsterY = m.y.value,
+                        monsterSize = m.currentSize.value,
+                        bullets = bullets,
+                        screenWidth = screenWidthPx
+                    )
+
+                    // Apply evasion movement (horizontal dodge)
+                    m.x = (m.x + evasion.first).coerceIn(0f, screenWidthPx - m.currentSize.value)
+
                     // Grow over time
                     m.grow()
 
@@ -183,7 +204,7 @@ fun Level4Game(
                     if (wallActive && monsterBottom >= wallTop) {
                         // Stop at wall
                     } else {
-                        // Normal movement
+                        // Normal downward movement
                         m.y.value += m.speed
                     }
 
@@ -219,23 +240,24 @@ fun Level4Game(
         }
     }
 
-    // --- Bullet vs Monster collision ---
+    // --- Bullet - Monster collision ---
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
-            val iter = bullets.iterator()
-            while (iter.hasNext()) {
-                val b = iter.next()
-                growingMonsters.forEach { m ->
-                    if (CollisionUtils.checkCollisionBulletGrowingMonster(b, m)) {
-                        m.hp.value -= 75
-                        // Play hit sound
-                        SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
-                        iter.remove()
-                        if (m.hp.value <= 0) {
-                            m.alive.value = false
-                            val index = growingMonsters.indexOf(m)
-                            if (index >= 0) {
-                                monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
+            growingMonsters.forEach { m ->
+                if (m.alive.value) {
+                    val iter = bullets.iterator()
+                    while (iter.hasNext()) {
+                        val b = iter.next()
+                        if (CollisionUtils.checkCollisionBulletMonster(b, m)) {
+                            m.hp.value -= 20
+                            SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
+                            iter.remove()
+                            if (m.hp.value <= 0) {
+                                m.alive.value = false
+                                val index = growingMonsters.indexOf(m)
+                                if (index >= 0) {
+                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
+                                }
                             }
                         }
                     }
@@ -266,8 +288,8 @@ fun Level4Game(
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             growingMonsters.forEach { m ->
-                if (CollisionUtils.checkCollisionPlaneGrowingMonster(planeX, planeY, planeWidth, planeHeight, m)) {
-                    if (!shieldActive && !wallActive) {
+                if (m.alive.value && CollisionUtils.checkCollisionPlaneMonster(planeX, planeY, planeWidth, planeHeight, m)) {
+                    if (!shieldActive) {
                         val damage = (30 * (m.currentSize.value / m.initialSize)).toInt()
                         planeHp -= damage
                     }
@@ -285,10 +307,14 @@ fun Level4Game(
         while (!isGameOver && !isLevelClear) {
             if (wallActive) {
                 growingMonsters.forEach { m ->
-                    if (CollisionUtils.checkCollisionWallGrowingMonster(planeY, m)) {
-                        m.hp.value -= 2
-                        if (m.hp.value <= 0) {
-                            m.alive.value = false
+                    if (m.alive.value) {
+                        val wallTop = planeY - 60f
+                        val monsterBottom = m.y.value + m.currentSize.value
+                        if (monsterBottom >= wallTop) {
+                            m.hp.value -= 2
+                            if (m.hp.value <= 0) {
+                                m.alive.value = false
+                            }
                         }
                     }
                 }

@@ -212,33 +212,3 @@ fun GameEndDialog(
         }
     }
 }
-
-/**
- * BagCoinAnimatedView - Reusable component for coin collection animation
- * Can be used across all game levels
- */
-@Composable
-fun BagCoinAnimatedView(bag: BagCoinDisplay, onFinished: (BagCoinDisplay) -> Unit) {
-    var offsetY by remember { mutableStateOf(bag.y) }
-    var alpha by remember { mutableStateOf(1f) }
-
-    LaunchedEffect(bag) {
-        val duration = 800L
-        val steps = 40
-        repeat(steps) { i ->
-            offsetY -= 2f
-            alpha = 1f - (i / steps.toFloat())
-            delay(duration / steps)
-        }
-        onFinished(bag)
-    }
-
-    Image(
-        painter = painterResource(R.drawable.bagcoin),
-        contentDescription = null,
-        modifier = Modifier
-            .absoluteOffset { IntOffset(bag.x.roundToInt(), offsetY.roundToInt()) }
-            .size(60.dp)
-            .graphicsLayer { this.alpha = alpha }
-    )
-}

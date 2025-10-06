@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +21,7 @@ import com.example.game.ui.PlaneUI
 import com.example.game.ui.WallUI
 import com.example.game.ui.SplittingMonsterUI
 import com.example.game.ui.SoundControlButton
+import com.example.game.ui.BagCoinAnimatedView
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -28,6 +30,14 @@ class Level5Activity : BaseGameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initAudio()
+
+        // Initialize AI Avoidance Helper for smart bullet dodging
+        try {
+            AIAvoidanceHelper.init(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Continue without AI if it fails
+        }
 
         setContent {
             val density = LocalDensity.current
@@ -42,6 +52,15 @@ class Level5Activity : BaseGameActivity() {
                 hitSoundId = hitSoundId,
                 onExit = { finish() }
             )
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            AIAvoidanceHelper.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
@@ -158,29 +177,39 @@ fun Level5Game(
         }
     }
 
-    // --- Monster movement (zigzag or bounce) ---
+    // --- Monster movement (zigzag or bounce) + AI evasion ---
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             // Create a snapshot to avoid concurrent modification
             val currentMonsters = splittingMonsters.toList()
             currentMonsters.forEach { m ->
                 if (m.alive.value && m.hp.value > 0 && !timeActive) {
+                    // AI-based evasion: monster tries to dodge bullets intelligently
+                    val evasion = AIAvoidanceHelper.calculateEvasion(
+                        monsterX = m.x,
+                        monsterY = m.y.value,
+                        monsterSize = m.size,
+                        bullets = bullets,
+                        screenWidth = screenWidthPx
+                    )
+
                     if (m.isZigzagMovement) {
-                        // Zigzag movement
-                        m.x += m.horizontalSpeed * m.direction
+                        // Zigzag movement combined with AI evasion
+                        val combinedX = (m.horizontalSpeed * m.direction) + evasion.first
+                        m.x = (m.x + combinedX).coerceIn(0f, screenWidthPx - m.size)
+
                         if (m.x <= 0 || m.x >= screenWidthPx - m.size) {
                             m.direction *= -1
                         }
                         m.y.value += m.speed
                     } else {
-                        // Bounce movement
-                        m.x += m.velocityX
+                        // Bounce movement combined with AI evasion
+                        m.x = (m.x + m.velocityX + evasion.first).coerceIn(0f, screenWidthPx - m.size)
                         m.y.value += m.velocityY
 
                         // Bounce off walls
                         if (m.x <= 0 || m.x >= screenWidthPx - m.size) {
                             m.velocityX *= -1
-                            m.x = m.x.coerceIn(0f, screenWidthPx - m.size)
                         }
 
                         // Bounce off top (optional)

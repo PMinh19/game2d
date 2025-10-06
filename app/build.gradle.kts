@@ -60,4 +60,8 @@ dependencies {
     implementation(platform(libs.firebase.bom)) // Sử dụng Firebase BOM
     implementation(libs.firebase.firestore) // Sử dụng Firestore từ BOM
     implementation("androidx.compose.material3:material3:<latest-version>")
+
+    // TensorFlow Lite for AI avoidance
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 }

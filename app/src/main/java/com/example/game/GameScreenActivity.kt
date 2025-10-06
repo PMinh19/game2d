@@ -22,6 +22,7 @@ import com.example.game.ui.PlaneUI
 import com.example.game.ui.MonsterUI
 import com.example.game.ui.WallUI
 import com.example.game.ui.SoundControlButton
+import com.example.game.ui.BagCoinAnimatedView
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -30,6 +31,9 @@ class GameScreenActivity : BaseGameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initAudio()
+
+        // Initialize AI Avoidance Helper for smart bullet dodging
+        AIAvoidanceHelper.init(this)
 
         setContent {
             val density = LocalDensity.current
@@ -45,6 +49,11 @@ class GameScreenActivity : BaseGameActivity() {
                 onExit = { finish() }
             )
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        AIAvoidanceHelper.release()
     }
 }
 
@@ -178,6 +187,18 @@ fun GameScreen(
                 }
 
                 if (m.alive.value && m.hp.value > 0 && !timeActive) {
+                    // AI-based evasion: monster tries to dodge bullets intelligently
+                    val evasion = AIAvoidanceHelper.calculateEvasion(
+                        monsterX = m.x,
+                        monsterY = m.y.value,
+                        monsterSize = 100f,
+                        bullets = bullets,
+                        screenWidth = screenWidthPx
+                    )
+
+                    // Apply evasion movement (horizontal dodge)
+                    m.x = (m.x + evasion.first).coerceIn(0f, screenWidthPx - 100f)
+
                     // Wall is at planeY - 60f, so stop monsters closer to actually touch it
                     val wallTop = planeY - 60f
                     val monsterBottom = m.y.value + 80f // Monster height is 80px
@@ -477,40 +498,4 @@ fun GameScreen(
             }
         )
     }
-}
-
-/**
- * BagCoinAnimatedView
- * - Animates a bag coin sprite moving slightly up and fading out.
- * - Calls onFinished(bag) when animation done so caller can remove it.
- */
-@Composable
-private fun BagCoinAnimatedView(bag: BagCoinDisplay, onFinished: (BagCoinDisplay) -> Unit) {
-    // local state for animation
-    var offsetY by remember { mutableStateOf(bag.y) }
-    var alpha by remember { mutableStateOf(1f) }
-    val coroutineScope = rememberCoroutineScope()
-
-    // animate once when composition enters
-    LaunchedEffect(bag) {
-        val duration = 800L
-        val steps = 40
-        repeat(steps) { i ->
-            offsetY -= 2f // move up total ~80 px over duration
-            alpha = 1f - (i / steps.toFloat())
-            delay(duration / steps)
-        }
-        // finished -> notify parent to remove
-        onFinished(bag)
-    }
-
-    // Render image with graphicsLayer alpha
-    Image(
-        painter = painterResource(R.drawable.bagcoin),
-        contentDescription = null,
-        modifier = Modifier
-            .absoluteOffset { IntOffset(bag.x.roundToInt(), offsetY.roundToInt()) }
-            .size(60.dp)
-            .graphicsLayer { this.alpha = alpha }
-    )
 }

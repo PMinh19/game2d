@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +21,7 @@ import com.example.game.ui.PlaneUI
 import com.example.game.ui.WallUI
 import com.example.game.ui.InvisibleMonsterUI
 import com.example.game.ui.SoundControlButton
+import com.example.game.ui.BagCoinAnimatedView
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -27,21 +29,43 @@ import kotlin.random.Random
 class Level3Activity : BaseGameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        initAudio()
+        try {
+            initAudio()
 
-        setContent {
-            val density = LocalDensity.current
-            val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
-            val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+            // Initialize AI Avoidance Helper for smart bullet dodging
+            try {
+                AIAvoidanceHelper.init(this)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Continue without AI if it fails
+            }
 
-            Level3Game(
-                screenWidthPx = screenWidthPx,
-                screenHeightPx = screenHeightPx,
-                soundPool = soundPool,
-                shootSoundId = shootSoundId,
-                hitSoundId = hitSoundId,
-                onExit = { finish() }
-            )
+            setContent {
+                val density = LocalDensity.current
+                val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+                val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+
+                Level3Game(
+                    screenWidthPx = screenWidthPx,
+                    screenHeightPx = screenHeightPx,
+                    soundPool = soundPool,
+                    shootSoundId = shootSoundId,
+                    hitSoundId = hitSoundId,
+                    onExit = { finish() }
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            finish() // Exit gracefully if something goes wrong
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            AIAvoidanceHelper.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
@@ -171,6 +195,18 @@ fun Level3Game(
                 }
 
                 if (m.alive.value && m.hp.value > 0 && !timeActive) {
+                    // AI-based evasion: monster tries to dodge bullets intelligently
+                    val evasion = AIAvoidanceHelper.calculateEvasion(
+                        monsterX = m.x,
+                        monsterY = m.y.value,
+                        monsterSize = 100f,
+                        bullets = bullets,
+                        screenWidth = screenWidthPx
+                    )
+
+                    // Apply AI evasion (combines with zigzag movement)
+                    val aiDodgeX = evasion.first
+
                     // Toggle visibility
                     val currentTime = System.currentTimeMillis()
                     val elapsed = currentTime - m.lastToggleTime
@@ -192,8 +228,10 @@ fun Level3Game(
                         m.y.value += m.speed
                     }
 
-                    // Zigzag movement
-                    m.x += m.horizontalSpeed * m.direction
+                    // Zigzag movement combined with AI evasion
+                    val combinedX = (m.horizontalSpeed * m.direction) + aiDodgeX
+                    m.x = (m.x + combinedX).coerceIn(0f, screenWidthPx - 100f)
+
                     if (m.x <= 0 || m.x >= screenWidthPx - 100f) {
                         m.direction *= -1
                     }

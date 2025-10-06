@@ -22,6 +22,7 @@ import com.example.game.ui.PlaneUI
 import com.example.game.ui.MonsterUI
 import com.example.game.ui.WallUI
 import com.example.game.ui.SoundControlButton
+import com.example.game.ui.BagCoinAnimatedView
 import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
@@ -30,6 +31,9 @@ class Level2Activity : BaseGameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initAudio()
+
+        // Initialize AI Avoidance Helper for smart bullet dodging
+        AIAvoidanceHelper.init(this)
 
         setContent {
             val density = LocalDensity.current
@@ -45,6 +49,11 @@ class Level2Activity : BaseGameActivity() {
                 onExit = { finish() }
             )
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        AIAvoidanceHelper.release()
     }
 }
 
@@ -507,37 +516,6 @@ fun Level2Game(
             }
         )
     }
-}
-
-/**
- * BagCoinAnimatedView for Level 2
- * - Animates a bag coin sprite moving slightly up and fading out.
- * - Calls onFinished(bag) when animation done so caller can remove it.
- */
-@Composable
-private fun BagCoinAnimatedView(bag: BagCoinDisplay, onFinished: (BagCoinDisplay) -> Unit) {
-    var offsetY by remember { mutableStateOf(bag.y) }
-    var alpha by remember { mutableStateOf(1f) }
-
-    LaunchedEffect(bag) {
-        val duration = 800L
-        val steps = 40
-        repeat(steps) { i ->
-            offsetY -= 2f
-            alpha = 1f - (i / steps.toFloat())
-            delay(duration / steps)
-        }
-        onFinished(bag)
-    }
-
-    Image(
-        painter = painterResource(R.drawable.bagcoin),
-        contentDescription = null,
-        modifier = Modifier
-            .absoluteOffset { IntOffset(bag.x.roundToInt(), offsetY.roundToInt()) }
-            .size(60.dp)
-            .graphicsLayer { this.alpha = alpha }
-    )
 }
 
 /**
