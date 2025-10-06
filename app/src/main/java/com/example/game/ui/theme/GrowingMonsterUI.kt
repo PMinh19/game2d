@@ -26,7 +26,7 @@ fun GrowingMonsterUI(monster: GrowingMonster, level: Int = 4) {
         val sizeDp = with(density) { monster.currentSize.value.toDp() }
 
         val monsterDrawable = when(level) {
-            4 -> R.drawable.quaivat1
+            4 -> R.drawable.monster4
             else -> R.drawable.quaivat1
         }
 

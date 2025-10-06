@@ -25,6 +25,8 @@ fun PlaneUI(
     val planeDrawable = when(level) {
         2 -> R.drawable.plane2
         3 -> R.drawable.plane3
+        4 -> R.drawable.plane4
+        5 -> R.drawable.plane5
         else -> R.drawable.maybay1
     }
 

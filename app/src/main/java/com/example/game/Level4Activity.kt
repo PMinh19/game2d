@@ -6,8 +6,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -105,14 +107,13 @@ fun Level4Game(
     val planeHeight = 100f
 
     // --- Background ---
-    var bg1Y by remember { mutableStateOf(0f) }
-    var bg2Y by remember { mutableStateOf(-screenHeightPx) }
+    var offsetY by remember { mutableStateOf(0f) }
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
-            bg1Y += 4f
-            bg2Y += 4f
-            if (bg1Y >= screenHeightPx) bg1Y = bg2Y - screenHeightPx
-            if (bg2Y >= screenHeightPx) bg2Y = bg1Y - screenHeightPx
+            offsetY += 4f
+            if (offsetY >= screenHeightPx) {
+                offsetY %= screenHeightPx
+            }
             delay(16)
         }
     }
@@ -124,10 +125,10 @@ fun Level4Game(
                 x = Random.nextFloat() * (screenWidthPx - 200f) + 100f,
                 y = mutableStateOf(-Random.nextInt(200, 1500).toFloat()),
                 speed = Random.nextFloat() * 1.2f + 1.0f,
-                hp = mutableStateOf(50),  // Giảm HP từ 80 xuống 50
-                initialSize = 60f,
-                maxSize = 200f,  // Giảm max size từ 600f xuống 200f
-                growthRate = 0.3f  // Giảm tốc độ lớn từ 0.5f xuống 0.3f
+                hp = mutableStateOf(80),  // Tăng HP lên 80
+                initialSize = 80f,  // Tăng kích thước ban đầu từ 60f lên 80f
+                maxSize = 500f,  // Tăng kích thước tối đa từ 200f lên 500f
+                growthRate = 0.5f  // Tăng tốc độ lớn từ 0.3f lên 0.5f
             )
         }
     }
@@ -184,14 +185,14 @@ fun Level4Game(
                 if (!m.alive.value && System.currentTimeMillis() >= monsterRespawnTimes[index]) {
                     m.y.value = -Random.nextInt(200, 1500).toFloat()
                     m.x = Random.nextFloat() * (screenWidthPx - 200f) + 100f
-                    m.hp.value = 80
+                    m.hp.value = 80  // Sửa từ 50 thành 80 để khớp với initialSize mới
                     m.maxHp = 80
                     m.currentMaxHp.value = 80
                     m.currentSize.value = m.initialSize
                     m.alive.value = true
                 }
 
-                if (m.alive.value) {
+                if (m.alive.value && !timeActive) {  // Thêm điều kiện !timeActive để grow khi không bị time stop
                     // AI-based evasion: monster tries to dodge bullets intelligently
                     val evasion = AIAvoidanceHelper.calculateEvasion(
                         monsterX = m.x,
@@ -370,92 +371,105 @@ fun Level4Game(
     }
 
     // --- UI ---
-    Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
-        // Background
-        Image(
-            painter = painterResource(R.drawable.vutru1),
-            contentDescription = null,
-            modifier = Modifier.absoluteOffset { IntOffset(0, bg1Y.roundToInt()) }.fillMaxSize()
-        )
-        Image(
-            painter = painterResource(R.drawable.vutru1),
-            contentDescription = null,
-            modifier = Modifier.absoluteOffset { IntOffset(0, bg2Y.roundToInt()) }.fillMaxSize()
-        )
-
-        // Growing Monsters
-        growingMonsters.forEach { m ->
-            GrowingMonsterUI(monster = m, level = 4)
-        }
-
-        // Coins
-        coins.filter { !it.collected.value }.forEach { c ->
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Background layer - separate from drag gestures
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Hình nền chính
             Image(
-                painter = painterResource(R.drawable.coin),
+                painter = painterResource(R.drawable.nen4),
                 contentDescription = null,
                 modifier = Modifier
-                    .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
-                    .size(40.dp)
+                    .fillMaxSize()
+                    .offset { IntOffset(0, offsetY.roundToInt()) },
+                contentScale = ContentScale.Crop
+            )
+            // Hình nền phụ để tạo hiệu ứng lặp
+            Image(
+                painter = painterResource(R.drawable.nen4),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, (offsetY - screenHeightPx).roundToInt()) },
+                contentScale = ContentScale.Crop
             )
         }
 
-        // BagCoin animated views
-        bagCoins.toList().forEach { bag ->
-            BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
-                bagCoins.remove(finishedBag)
-            })
-        }
+        // Game content with drag gesture
+        Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
+            // Growing Monsters
+            growingMonsters.forEach { m ->
+                GrowingMonsterUI(monster = m, level = 4)
+            }
 
-        // Bullets
-        bullets.forEach { b ->
-            Image(
-                painter = painterResource(R.drawable.dan2),
-                contentDescription = null,
-                modifier = Modifier
-                    .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                    .size(30.dp)
+            // Coins
+            coins.filter { !it.collected.value }.forEach { c ->
+                Image(
+                    painter = painterResource(R.drawable.coin),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
+                        .size(40.dp)
+                )
+            }
+
+            // BagCoin animated views
+            bagCoins.toList().forEach { bag ->
+                BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
+                    bagCoins.remove(finishedBag)
+                })
+            }
+
+            // Bullets
+            bullets.forEach { b ->
+                Image(
+                    painter = painterResource(R.drawable.dan2),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
+                        .size(30.dp)
+                )
+            }
+
+            // Plane
+            PlaneUI(
+                planeX = planeX,
+                planeY = planeY,
+                planeHp = planeHp,
+                shieldActive = shieldActive,
+                level = 4
             )
-        }
 
-        // Plane
-        PlaneUI(
-            planeX = planeX,
-            planeY = planeY,
-            planeHp = planeHp,
-            shieldActive = shieldActive,
-            level = 4
-        )
+            // Wall
+            if (wallActive) {
+                WallUI(planeY = planeY)
+            }
 
-        // Wall
-        if (wallActive) {
-            WallUI(planeY = planeY)
-        }
-
-        // Top bar
-        TopBarUI(
-            bagCoinScore = totalScore,
-            chestItems = chestItems,
-            onBuyItem = { item, price ->
-                if (totalScore >= price) {
-                    totalScore -= price
-                    chestItems = chestItems + item
-                    if (!playerName.isNullOrBlank()) {
-                        FirebaseHelper.updateScore(playerName, totalScore)
-                        FirebaseHelper.updateChest(playerName, chestItems)
+            // Top bar
+            TopBarUI(
+                bagCoinScore = totalScore,
+                chestItems = chestItems,
+                onBuyItem = { item, price ->
+                    if (totalScore >= price) {
+                        totalScore -= price
+                        chestItems = chestItems + item
+                        if (!playerName.isNullOrBlank()) {
+                            FirebaseHelper.updateScore(playerName, totalScore)
+                            FirebaseHelper.updateChest(playerName, chestItems)
+                        }
                     }
-                }
-            },
-            onUseChestItem = { useChestItem(it) }
-        )
+                },
+                onUseChestItem = { useChestItem(it) }
+            )
 
-        // --- Sound Control Button (top-right corner) ---
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = androidx.compose.ui.Alignment.TopEnd
-        ) {
-            SoundControlButton()
+            // --- Sound Control Button (top-right corner) ---
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                SoundControlButton()
+            }
         }
     }
 

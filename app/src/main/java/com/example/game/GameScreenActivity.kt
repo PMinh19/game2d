@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -106,21 +107,14 @@ fun GameScreen(
     val planeHeight = 100f
 
     // --- Background (2 images loop) ---
-    var bg1Y by remember { mutableStateOf(0f) }
-    var bg2Y by remember { mutableStateOf(-screenHeightPx) }
+    var offsetY by remember { mutableStateOf(0f) }
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
-            bg1Y += 4f
-            bg2Y += 4f
-
-            // Fix: When an image scrolls completely off screen, place it right above the other one
-            if (bg1Y >= screenHeightPx) {
-                bg1Y = bg2Y - screenHeightPx
+            offsetY += 4f
+            // Sử dụng modulo để giữ chuyển động liên tục
+            if (offsetY >= screenHeightPx) {
+                offsetY %= screenHeightPx
             }
-            if (bg2Y >= screenHeightPx) {
-                bg2Y = bg1Y - screenHeightPx
-            }
-
             delay(16)
         }
     }
@@ -368,95 +362,104 @@ fun GameScreen(
     }
 
     // --- UI ---
-    Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
-        // background layers (sliding)
-        Image(
-            painter = painterResource(R.drawable.nen2),
-            contentDescription = null,
-            modifier = Modifier
-                .absoluteOffset { IntOffset(0, bg1Y.roundToInt()) }
-                .fillMaxSize()
-        )
-        Image(
-            painter = painterResource(R.drawable.nen2),
-            contentDescription = null,
-            modifier = Modifier
-                .absoluteOffset { IntOffset(0, bg2Y.roundToInt()) }
-                .fillMaxSize()
-        )
-
-        // --- Monsters (using MonsterUI component) ---
-        monsters.forEach { m ->
-            MonsterUI(monster = m)
-        }
-
-        // --- Coins ---
-        coins.filter { !it.collected.value }.forEach { c ->
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Background layer - separate from drag gestures
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Hình nền chính
             Image(
-                painter = painterResource(R.drawable.coin),
+                painter = painterResource(R.drawable.nen2),
                 contentDescription = null,
                 modifier = Modifier
-                    .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
-                    .size(40.dp)
+                    .fillMaxSize()
+                    .offset { IntOffset(0, offsetY.roundToInt()) },
+                contentScale = ContentScale.Crop
+            )
+            // Hình nền phụ để tạo hiệu ứng lặp
+            Image(
+                painter = painterResource(R.drawable.nen2),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, (offsetY - screenHeightPx).roundToInt()) },
+                contentScale = ContentScale.Crop
             )
         }
 
-        // --- BagCoin animated views (spawned when coin collected) ---
-        bagCoins.toList().forEach { bag ->
-            BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
-                bagCoins.remove(finishedBag)
-            })
-        }
+        // Game content with drag gesture
+        Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
+            // --- Monsters (using MonsterUI component) ---
+            monsters.forEach { m ->
+                MonsterUI(monster = m)
+            }
 
-        // --- Bullets ---
-        bullets.forEach { b ->
-            Image(
-                painter = painterResource(R.drawable.dan2),
-                contentDescription = null,
-                modifier = Modifier
-                    .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                    .size(30.dp)
+            // --- Coins ---
+            coins.filter { !it.collected.value }.forEach { c ->
+                Image(
+                    painter = painterResource(R.drawable.coin),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
+                        .size(40.dp)
+                )
+            }
+
+            // --- BagCoin animated views (spawned when coin collected) ---
+            bagCoins.toList().forEach { bag ->
+                BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
+                    bagCoins.remove(finishedBag)
+                })
+            }
+
+            // --- Bullets ---
+            bullets.forEach { b ->
+                Image(
+                    painter = painterResource(R.drawable.dan2),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
+                        .size(30.dp)
+                )
+            }
+
+            // --- Plane (using PlaneUI component) ---
+            PlaneUI(
+                planeX = planeX,
+                planeY = planeY,
+                planeHp = planeHp,
+                shieldActive = shieldActive
             )
-        }
 
-        // --- Plane (using PlaneUI component) ---
-        PlaneUI(
-            planeX = planeX,
-            planeY = planeY,
-            planeHp = planeHp,
-            shieldActive = shieldActive
-        )
+            // --- Wall effect (using WallUI component) ---
+            if (wallActive) {
+                WallUI(planeY = planeY)
+            }
 
-        // --- Wall effect (using WallUI component) ---
-        if (wallActive) {
-            WallUI(planeY = planeY)
-        }
-
-        // --- Top bar with chest items and score ---
-        TopBarUI(
-            bagCoinScore = totalScore,
-            chestItems = chestItems,
-            onBuyItem = { item, price ->
-                if (totalScore >= price) {
-                    totalScore -= price
-                    chestItems = chestItems + item
-                    if (!playerName.isNullOrBlank()) {
-                        FirebaseHelper.updateScore(playerName, totalScore)
-                        FirebaseHelper.updateChest(playerName, chestItems)
+            // --- Top bar with chest items and score ---
+            TopBarUI(
+                bagCoinScore = totalScore,
+                chestItems = chestItems,
+                onBuyItem = { item, price ->
+                    if (totalScore >= price) {
+                        totalScore -= price
+                        chestItems = chestItems + item
+                        if (!playerName.isNullOrBlank()) {
+                            FirebaseHelper.updateScore(playerName, totalScore)
+                            FirebaseHelper.updateChest(playerName, chestItems)
+                        }
                     }
-                }
-            },
-            onUseChestItem = { useChestItem(it) }
-        )
+                },
+                onUseChestItem = { useChestItem(it) }
+            )
 
-        // --- Sound Control Button (top-right corner) ---
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.TopEnd
-        ) {
-            SoundControlButton()
+            // --- Sound Control Button (top-right corner) ---
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                SoundControlButton()
+            }
         }
     }
 

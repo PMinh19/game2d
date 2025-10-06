@@ -20,13 +20,18 @@ import kotlin.math.roundToInt
  * UI for Splitting Monster with dynamic size based on generation
  */
 @Composable
-fun SplittingMonsterUI(monster: SplittingMonster) {
+fun SplittingMonsterUI(monster: SplittingMonster, level: Int = 5) {
     if (monster.alive.value && monster.hp.value > 0) {
         val density = LocalDensity.current
         val sizeDp = with(density) { monster.size.toDp() }
 
+        val monsterDrawable = when(level) {
+            5 -> R.drawable.monster5
+            else -> R.drawable.quaivat1
+        }
+
         Image(
-            painter = painterResource(R.drawable.quaivat1),
+            painter = painterResource(monsterDrawable),
             contentDescription = null,
             modifier = Modifier
                 .absoluteOffset { IntOffset(monster.x.roundToInt(), monster.y.value.roundToInt()) }
@@ -47,4 +52,3 @@ fun SplittingMonsterUI(monster: SplittingMonster) {
         }
     }
 }
-

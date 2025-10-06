@@ -6,9 +6,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -421,91 +422,104 @@ fun Level5Game(
     }
 
     // --- UI ---
-    Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
-        // Background
-        Image(
-            painter = painterResource(R.drawable.vutru1),
-            contentDescription = null,
-            modifier = Modifier.absoluteOffset { IntOffset(0, bg1Y.roundToInt()) }.fillMaxSize()
-        )
-        Image(
-            painter = painterResource(R.drawable.vutru1),
-            contentDescription = null,
-            modifier = Modifier.absoluteOffset { IntOffset(0, bg2Y.roundToInt()) }.fillMaxSize()
-        )
-
-        // Splitting Monsters
-        splittingMonsters.forEach { m ->
-            SplittingMonsterUI(monster = m)
-        }
-
-        // Coins
-        coins.filter { !it.collected.value }.forEach { c ->
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Background layer - separate from drag gestures
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Background
             Image(
-                painter = painterResource(R.drawable.coin),
+                painter = painterResource(R.drawable.nen5),
                 contentDescription = null,
                 modifier = Modifier
-                    .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
-                    .size(40.dp)
+                    .fillMaxSize()
+                    .offset { IntOffset(0, bg1Y.roundToInt()) },
+                contentScale = ContentScale.Crop
+            )
+            Image(
+                painter = painterResource(R.drawable.nen5),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, bg2Y.roundToInt()) },
+                contentScale = ContentScale.Crop
             )
         }
 
-        // BagCoin animated views
-        bagCoins.toList().forEach { bag ->
-            BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
-                bagCoins.remove(finishedBag)
-            })
-        }
+        // Game content with drag gesture
+        Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
+            // Splitting Monsters
+            splittingMonsters.forEach { m ->
+                SplittingMonsterUI(monster = m, level = 5)
+            }
 
-        // Bullets
-        bullets.forEach { b ->
-            Image(
-                painter = painterResource(R.drawable.dan2),
-                contentDescription = null,
-                modifier = Modifier
-                    .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                    .size(30.dp)
+            // Coins
+            coins.filter { !it.collected.value }.forEach { c ->
+                Image(
+                    painter = painterResource(R.drawable.coin),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
+                        .size(40.dp)
+                )
+            }
+
+            // BagCoin animated views
+            bagCoins.toList().forEach { bag ->
+                BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
+                    bagCoins.remove(finishedBag)
+                })
+            }
+
+            // Bullets
+            bullets.forEach { b ->
+                Image(
+                    painter = painterResource(R.drawable.dan2),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
+                        .size(30.dp)
+                )
+            }
+
+            // Plane
+            PlaneUI(
+                planeX = planeX,
+                planeY = planeY,
+                planeHp = planeHp,
+                shieldActive = shieldActive,
+                level = 5
             )
-        }
 
-        // Plane
-        PlaneUI(
-            planeX = planeX,
-            planeY = planeY,
-            planeHp = planeHp,
-            shieldActive = shieldActive
-        )
+            // Wall
+            if (wallActive) {
+                WallUI(planeY = planeY)
+            }
 
-        // Wall
-        if (wallActive) {
-            WallUI(planeY = planeY)
-        }
-
-        // Top bar
-        TopBarUI(
-            bagCoinScore = totalScore,
-            chestItems = chestItems,
-            onBuyItem = { item, price ->
-                if (totalScore >= price) {
-                    totalScore -= price
-                    chestItems = chestItems + item
-                    if (!playerName.isNullOrBlank()) {
-                        FirebaseHelper.updateScore(playerName, totalScore)
-                        FirebaseHelper.updateChest(playerName, chestItems)
+            // Top bar
+            TopBarUI(
+                bagCoinScore = totalScore,
+                chestItems = chestItems,
+                onBuyItem = { item, price ->
+                    if (totalScore >= price) {
+                        totalScore -= price
+                        chestItems = chestItems + item
+                        if (!playerName.isNullOrBlank()) {
+                            FirebaseHelper.updateScore(playerName, totalScore)
+                            FirebaseHelper.updateChest(playerName, chestItems)
+                        }
                     }
-                }
-            },
-            onUseChestItem = { useChestItem(it) }
-        )
+                },
+                onUseChestItem = { useChestItem(it) }
+            )
 
-        // --- Sound Control Button (top-right corner) ---
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = androidx.compose.ui.Alignment.TopEnd
-        ) {
-            SoundControlButton()
+            // --- Sound Control Button (top-right corner) ---
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                SoundControlButton()
+            }
         }
     }
 
