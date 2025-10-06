@@ -226,25 +226,16 @@ fun Level4Game(
             while (iter.hasNext()) {
                 val b = iter.next()
                 growingMonsters.forEach { m ->
-                    if (m.alive.value && m.hp.value > 0) {
-                        // Collision detection with dynamic size
-                        val monsterLeft = m.x - (m.currentSize.value - 80f) / 2
-                        val monsterRight = monsterLeft + m.currentSize.value
-                        val monsterTop = m.y.value
-                        val monsterBottom = monsterTop + m.currentSize.value
-
-                        if (b.x >= monsterLeft && b.x <= monsterRight &&
-                            b.y >= monsterTop && b.y <= monsterBottom) {
-                            m.hp.value -= 75 // Tăng từ 25 lên 75 (x3 lần)
-                            // Play hit sound
-                            SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
-                            iter.remove()
-                            if (m.hp.value <= 0) {
-                                m.alive.value = false
-                                val index = growingMonsters.indexOf(m)
-                                if (index >= 0) {
-                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
-                                }
+                    if (CollisionUtils.checkCollisionBulletGrowingMonster(b, m)) {
+                        m.hp.value -= 75
+                        // Play hit sound
+                        SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
+                        iter.remove()
+                        if (m.hp.value <= 0) {
+                            m.alive.value = false
+                            val index = growingMonsters.indexOf(m)
+                            if (index >= 0) {
+                                monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
                             }
                         }
                     }
@@ -275,21 +266,13 @@ fun Level4Game(
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             growingMonsters.forEach { m ->
-                if (m.alive.value && m.hp.value > 0) {
-                    val monsterLeft = m.x - (m.currentSize.value - 80f) / 2
-                    val monsterRight = monsterLeft + m.currentSize.value
-                    val monsterTop = m.y.value
-                    val monsterBottom = monsterTop + m.currentSize.value
-
-                    if (planeX + planeWidth > monsterLeft && planeX < monsterRight &&
-                        planeY + planeHeight > monsterTop && planeY < monsterBottom) {
-                        if (!shieldActive && !wallActive) {
-                            val damage = (30 * (m.currentSize.value / m.initialSize)).toInt()
-                            planeHp -= damage
-                        }
-                        m.hp.value = 0
-                        m.alive.value = false
+                if (CollisionUtils.checkCollisionPlaneGrowingMonster(planeX, planeY, planeWidth, planeHeight, m)) {
+                    if (!shieldActive && !wallActive) {
+                        val damage = (30 * (m.currentSize.value / m.initialSize)).toInt()
+                        planeHp -= damage
                     }
+                    m.hp.value = 0
+                    m.alive.value = false
                 }
             }
             if (planeHp <= 0) isGameOver = true
@@ -302,14 +285,10 @@ fun Level4Game(
         while (!isGameOver && !isLevelClear) {
             if (wallActive) {
                 growingMonsters.forEach { m ->
-                    if (m.alive.value && m.hp.value > 0) {
-                        val wallTop = planeY - 60f
-                        val monsterBottom = m.y.value + m.currentSize.value
-                        if (monsterBottom >= wallTop && monsterBottom <= wallTop + 10f) {
-                            m.hp.value -= 2
-                            if (m.hp.value <= 0) {
-                                m.alive.value = false
-                            }
+                    if (CollisionUtils.checkCollisionWallGrowingMonster(planeY, m)) {
+                        m.hp.value -= 2
+                        if (m.hp.value <= 0) {
+                            m.alive.value = false
                         }
                     }
                 }

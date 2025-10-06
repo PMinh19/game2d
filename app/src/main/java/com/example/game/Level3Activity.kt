@@ -234,7 +234,7 @@ fun Level3Game(
                 val b = iter.next()
                 invisibleMonsters.forEach { m ->
                     // Can only hit visible monsters
-                    if (m.isVisible.value && CollisionUtils.checkCollisionBulletMonster(b, m)) {
+                    if (m.isVisible.value && CollisionUtils.checkCollisionBulletInvisibleMonster(b, m)) {
                         m.hp.value -= 25
                         // Play hit sound
                         SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
@@ -274,9 +274,7 @@ fun Level3Game(
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             invisibleMonsters.forEach { m ->
-                if (m.alive.value && m.hp.value > 0 && m.isVisible.value &&
-                    CollisionUtils.checkCollisionPlaneMonster(planeX, planeY, planeWidth, planeHeight, m)
-                ) {
+                if (m.isVisible.value && CollisionUtils.checkCollisionPlaneInvisibleMonster(planeX, planeY, planeWidth, planeHeight, m)) {
                     if (!shieldActive && !wallActive) planeHp -= 50
                     m.hp.value = 0
                     m.alive.value = false
@@ -292,12 +290,10 @@ fun Level3Game(
         while (!isGameOver && !isLevelClear) {
             if (wallActive) {
                 invisibleMonsters.forEach { m ->
-                    if (m.alive.value && m.hp.value > 0 && m.isVisible.value) {
-                        if (CollisionUtils.checkCollisionWallMonster(planeY, m)) {
-                            m.hp.value -= 2
-                            if (m.hp.value <= 0) {
-                                m.alive.value = false
-                            }
+                    if (m.isVisible.value && CollisionUtils.checkCollisionWallInvisibleMonster(planeY, m)) {
+                        m.hp.value -= 2
+                        if (m.hp.value <= 0) {
+                            m.alive.value = false
                         }
                     }
                 }

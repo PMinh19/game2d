@@ -281,16 +281,13 @@ fun Level5Game(
                 val currentMonsters = splittingMonsters.toList()
                 var bulletRemoved = false
                 currentMonsters.forEach { m ->
-                    if (!bulletRemoved && m.alive.value && m.hp.value > 0) {
-                        if (b.x >= m.x && b.x <= m.x + m.size &&
-                            b.y >= m.y.value && b.y <= m.y.value + m.size) {
-                            m.hp.value -= 25
-                            bulletRemoved = true
-                            // Play hit sound when bullet hits monster
-                            SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
-                            if (m.hp.value <= 0) {
-                                m.alive.value = false
-                            }
+                    if (!bulletRemoved && CollisionUtils.checkCollisionBulletSplittingMonster(b, m)) {
+                        m.hp.value -= 25
+                        bulletRemoved = true
+                        // Play hit sound when bullet hits monster
+                        SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
+                        if (m.hp.value <= 0) {
+                            m.alive.value = false
                         }
                     }
                 }
@@ -325,20 +322,17 @@ fun Level5Game(
             // Create snapshot to avoid concurrent modification
             val currentMonsters = splittingMonsters.toList()
             currentMonsters.forEach { m ->
-                if (m.alive.value && m.hp.value > 0) {
-                    if (planeX + planeWidth > m.x && planeX < m.x + m.size &&
-                        planeY + planeHeight > m.y.value && planeY < m.y.value + m.size) {
-                        if (!shieldActive && !wallActive) {
-                            val damage = when(m.generation) {
-                                1 -> 50
-                                2 -> 30
-                                else -> 20
-                            }
-                            planeHp -= damage
+                if (CollisionUtils.checkCollisionPlaneSplittingMonster(planeX, planeY, planeWidth, planeHeight, m)) {
+                    if (!shieldActive && !wallActive) {
+                        val damage = when(m.generation) {
+                            1 -> 50
+                            2 -> 30
+                            else -> 20
                         }
-                        m.hp.value = 0
-                        m.alive.value = false
+                        planeHp -= damage
                     }
+                    m.hp.value = 0
+                    m.alive.value = false
                 }
             }
             if (planeHp <= 0) isGameOver = true
@@ -353,14 +347,10 @@ fun Level5Game(
                 // Create snapshot to avoid concurrent modification
                 val currentMonsters = splittingMonsters.toList()
                 currentMonsters.forEach { m ->
-                    if (m.alive.value && m.hp.value > 0) {
-                        val wallTop = planeY - 60f
-                        val monsterBottom = m.y.value + m.size
-                        if (monsterBottom >= wallTop && monsterBottom <= wallTop + 10f) {
-                            m.hp.value -= 2
-                            if (m.hp.value <= 0) {
-                                m.alive.value = false
-                            }
+                    if (CollisionUtils.checkCollisionWallSplittingMonster(planeY, m)) {
+                        m.hp.value -= 2
+                        if (m.hp.value <= 0) {
+                            m.alive.value = false
                         }
                     }
                 }
