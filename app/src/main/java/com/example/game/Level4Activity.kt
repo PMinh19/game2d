@@ -225,7 +225,7 @@ fun Level4Game(
                             val damage = (30 * (m.currentSize.value / m.initialSize)).toInt()
                             planeHp -= damage
                         }
-                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
+                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(1000, 2500)
                         m.alive.value = false
                     }
                 }
@@ -253,26 +253,30 @@ fun Level4Game(
     // --- Bullet - Monster collision ---
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
-            growingMonsters.forEach { m ->
-                if (m.alive.value) {
-                    val iter = bullets.iterator()
-                    while (iter.hasNext()) {
-                        val b = iter.next()
+            val toRemove = mutableSetOf<Bullet>()
+            bullets.toList().forEach { b ->
+                var shouldRemove = false
+                growingMonsters.forEach { m ->
+                    if (m.alive.value && !shouldRemove) {
                         if (CollisionUtils.checkCollisionBulletMonster(b, m)) {
                             m.hp.value -= 20
                             SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
-                            iter.remove()
+                            shouldRemove = true
                             if (m.hp.value <= 0) {
                                 m.alive.value = false
                                 val index = growingMonsters.indexOf(m)
                                 if (index >= 0) {
-                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
+                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(1000, 2500)
                                 }
                             }
                         }
                     }
                 }
+                if (shouldRemove) {
+                    toRemove.add(b)
+                }
             }
+            bullets.removeAll(toRemove)
             delay(16)
         }
     }

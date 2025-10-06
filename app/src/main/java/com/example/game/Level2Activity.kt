@@ -267,23 +267,27 @@ fun Level2Game(
     // --- Bullet vs Monster collision ---
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
-            val iter = bullets.iterator()
-            while (iter.hasNext()) {
-                val b = iter.next()
+            val toRemove = mutableSetOf<Bullet>()
+            bullets.toList().forEach { b ->
+                var shouldRemove = false
                 monsterGroups.forEach { group ->
                     group.monsters.forEach { m ->
-                        if (CollisionUtils.checkCollisionBulletMonster(b, m)) {
+                        if (m.alive.value && CollisionUtils.checkCollisionBulletMonster(b, m)) {
                             m.hp.value -= 25
                             // Play hit sound
                             SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
-                            iter.remove()
+                            shouldRemove = true
                             if (m.hp.value <= 0) {
                                 m.alive.value = false
                             }
                         }
                     }
                 }
+                if (shouldRemove) {
+                    toRemove.add(b)
+                }
             }
+            bullets.removeAll(toRemove)
             delay(16)
         }
     }
