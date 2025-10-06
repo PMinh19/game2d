@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -33,7 +32,12 @@ class GameScreenActivity : BaseGameActivity() {
         initAudio()
 
         // Initialize AI Avoidance Helper for smart bullet dodging
-        AIAvoidanceHelper.init(this)
+        try {
+            AIAvoidanceHelper.init(this)
+        } catch (e: Exception) {
+            android.util.Log.e("GameScreenActivity", "AI init failed: ${e.message}", e)
+            // Continue without AI - game will still work with basic logic
+        }
 
         setContent {
             val density = LocalDensity.current
@@ -53,7 +57,11 @@ class GameScreenActivity : BaseGameActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        AIAvoidanceHelper.release()
+        try {
+            AIAvoidanceHelper.release()
+        } catch (e: Exception) {
+            android.util.Log.e("GameScreenActivity", "AI release failed: ${e.message}", e)
+        }
     }
 }
 

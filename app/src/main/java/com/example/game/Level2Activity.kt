@@ -33,7 +33,12 @@ class Level2Activity : BaseGameActivity() {
         initAudio()
 
         // Initialize AI Avoidance Helper for smart bullet dodging
-        AIAvoidanceHelper.init(this)
+        try {
+            AIAvoidanceHelper.init(this)
+        } catch (e: Exception) {
+            android.util.Log.e("Level2Activity", "AI init failed: ${e.message}", e)
+            // Continue without AI - game will still work with basic logic
+        }
 
         setContent {
             val density = LocalDensity.current
@@ -53,7 +58,11 @@ class Level2Activity : BaseGameActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        AIAvoidanceHelper.release()
+        try {
+            AIAvoidanceHelper.release()
+        } catch (e: Exception) {
+            android.util.Log.e("Level2Activity", "AI release failed: ${e.message}", e)
+        }
     }
 }
 
