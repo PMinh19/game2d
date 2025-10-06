@@ -122,12 +122,12 @@ fun Level4Game(
         List(10) {
             GrowingMonster(
                 x = Random.nextFloat() * (screenWidthPx - 200f) + 100f,
-                y = mutableStateOf(-Random.nextInt(200, 2500).toFloat()),
+                y = mutableStateOf(-Random.nextInt(200, 1500).toFloat()),
                 speed = Random.nextFloat() * 1.2f + 1.0f,
-                hp = mutableStateOf(80),
+                hp = mutableStateOf(50),  // Giảm HP từ 80 xuống 50
                 initialSize = 60f,
-                maxSize = 600f,
-                growthRate = 0.5f
+                maxSize = 200f,  // Giảm max size từ 600f xuống 200f
+                growthRate = 0.3f  // Giảm tốc độ lớn từ 0.5f xuống 0.3f
             )
         }
     }
@@ -225,7 +225,7 @@ fun Level4Game(
                             val damage = (30 * (m.currentSize.value / m.initialSize)).toInt()
                             planeHp -= damage
                         }
-                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(1000, 2500)
+                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(500, 1500)  // Giảm thời gian respawn từ 1000-2500 xuống 500-1500
                         m.alive.value = false
                     }
                 }
@@ -266,7 +266,7 @@ fun Level4Game(
                                 m.alive.value = false
                                 val index = growingMonsters.indexOf(m)
                                 if (index >= 0) {
-                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(1000, 2500)
+                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(500, 1500)
                                 }
                             }
                         }
@@ -385,7 +385,7 @@ fun Level4Game(
 
         // Growing Monsters
         growingMonsters.forEach { m ->
-            GrowingMonsterUI(monster = m)
+            GrowingMonsterUI(monster = m, level = 4)
         }
 
         // Coins
@@ -422,7 +422,8 @@ fun Level4Game(
             planeX = planeX,
             planeY = planeY,
             planeHp = planeHp,
-            shieldActive = shieldActive
+            shieldActive = shieldActive,
+            level = 4
         )
 
         // Wall

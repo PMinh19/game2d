@@ -19,11 +19,18 @@ fun PlaneUI(
     planeX: Float,
     planeY: Float,
     planeHp: Int,
-    shieldActive: Boolean
+    shieldActive: Boolean,
+    level: Int = 1
 ) {
+    val planeDrawable = when(level) {
+        2 -> R.drawable.plane2
+        3 -> R.drawable.plane3
+        else -> R.drawable.maybay1
+    }
+
     // Plane
     Image(
-        painter = painterResource(R.drawable.maybay1),
+        painter = painterResource(planeDrawable),
         contentDescription = null,
         modifier = Modifier
             .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }

@@ -24,22 +24,27 @@ import kotlin.math.roundToInt
  * UI for Invisible Monster with fade effect
  */
 @Composable
-fun InvisibleMonsterUI(monster: InvisibleMonster) {
+fun InvisibleMonsterUI(monster: InvisibleMonster, level: Int = 3) {
     if (monster.alive.value && monster.hp.value > 0) {
         // Fade effect when appearing/disappearing
         val alpha = remember(monster.isVisible.value) {
-            Animatable(if (monster.isVisible.value) 1f else 0.3f)
+            Animatable(if (monster.isVisible.value) 1f else 0f)  // Thay đổi từ 0.3f thành 0f để tàng hình hoàn toàn
         }
 
         LaunchedEffect(monster.isVisible.value) {
             alpha.animateTo(
-                targetValue = if (monster.isVisible.value) 1f else 0.3f,
+                targetValue = if (monster.isVisible.value) 1f else 0f,  // Thay đổi từ 0.3f thành 0f
                 animationSpec = tween(300)
             )
         }
 
+        val monsterDrawable = when(level) {
+            3 -> R.drawable.monster3
+            else -> R.drawable.quaivat1
+        }
+
         Image(
-            painter = painterResource(R.drawable.quaivat1),
+            painter = painterResource(monsterDrawable),
             contentDescription = null,
             modifier = Modifier
                 .absoluteOffset { IntOffset(monster.x.roundToInt(), monster.y.value.roundToInt()) }
@@ -63,4 +68,3 @@ fun InvisibleMonsterUI(monster: InvisibleMonster) {
         }
     }
 }
-

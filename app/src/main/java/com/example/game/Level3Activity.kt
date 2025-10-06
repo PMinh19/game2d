@@ -386,11 +386,9 @@ fun Level3Game(
             modifier = Modifier.absoluteOffset { IntOffset(0, bg2Y.roundToInt()) }.fillMaxSize()
         )
 
-        // Invisible Monsters (only show when visible)
+        // Monsters (Level 3 uses InvisibleMonsterUI)
         invisibleMonsters.forEach { m ->
-            if (m.isVisible.value) {
-                InvisibleMonsterUI(monster = m)
-            }
+            InvisibleMonsterUI(monster = m, level = 3)
         }
 
         // Coins
@@ -427,7 +425,8 @@ fun Level3Game(
             planeX = planeX,
             planeY = planeY,
             planeHp = planeHp,
-            shieldActive = shieldActive
+            shieldActive = shieldActive,
+            level = 3
         )
 
         // Wall

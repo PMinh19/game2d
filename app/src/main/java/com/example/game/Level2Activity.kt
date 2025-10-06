@@ -400,7 +400,7 @@ fun Level2Game(
         // Monsters (using MonsterUI component)
         monsterGroups.forEach { group ->
             group.monsters.forEach { m ->
-                MonsterUI(monster = m)
+                MonsterUI(monster = m, level = 2)
             }
         }
 
@@ -438,7 +438,8 @@ fun Level2Game(
             planeX = planeX,
             planeY = planeY,
             planeHp = planeHp,
-            shieldActive = shieldActive
+            shieldActive = shieldActive,
+            level = 2
         )
 
         // Wall (using WallUI component)

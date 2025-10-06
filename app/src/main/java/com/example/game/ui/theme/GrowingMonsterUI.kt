@@ -20,13 +20,18 @@ import kotlin.math.roundToInt
  * UI for Growing Monster with dynamic size and HP bar
  */
 @Composable
-fun GrowingMonsterUI(monster: GrowingMonster) {
+fun GrowingMonsterUI(monster: GrowingMonster, level: Int = 4) {
     if (monster.alive.value && monster.hp.value > 0) {
         val density = LocalDensity.current
         val sizeDp = with(density) { monster.currentSize.value.toDp() }
 
+        val monsterDrawable = when(level) {
+            4 -> R.drawable.quaivat1
+            else -> R.drawable.quaivat1
+        }
+
         Image(
-            painter = painterResource(R.drawable.quaivat1),
+            painter = painterResource(monsterDrawable),
             contentDescription = null,
             modifier = Modifier
                 .absoluteOffset {

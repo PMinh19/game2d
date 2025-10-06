@@ -16,10 +16,16 @@ import com.example.game.core.BaseMonster
 import kotlin.math.roundToInt
 
 @Composable
-fun MonsterUI(monster: BaseMonster) {
+fun MonsterUI(monster: BaseMonster, level: Int = 1) {
     if (monster.alive.value && monster.hp.value > 0) {
+        val monsterDrawable = when(level) {
+            2 -> R.drawable.monster2
+            3 -> R.drawable.monster3
+            else -> R.drawable.quaivat1
+        }
+
         Image(
-            painter = painterResource(R.drawable.quaivat1),
+            painter = painterResource(monsterDrawable),
             contentDescription = null,
             modifier = Modifier
                 .absoluteOffset { IntOffset(monster.x.roundToInt(), monster.y.value.roundToInt()) }
