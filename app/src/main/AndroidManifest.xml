@@ -29,6 +29,27 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Game" />
 
+        <!-- Level 3 Activity -->
+        <activity
+            android:name=".Level3Activity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Game" />
+
+        <!-- Level 4 Activity -->
+        <activity
+            android:name=".Level4Activity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Game" />
+
+        <!-- Level 5 Activity -->
+        <activity
+            android:name=".Level5Activity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Game" />
+
         <!-- Main Activity -->
         <activity
             android:name=".MainActivity"

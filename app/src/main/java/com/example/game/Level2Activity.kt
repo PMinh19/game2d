@@ -1,951 +1,575 @@
 package com.example.game
 
-import android.graphics.RectF
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Text
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
-import androidx.compose.material3.Button
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.os.Bundle
-import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
-import kotlin.random.Random
 import com.example.game.TopBarComponent.TopBarUI
+import com.example.game.core.*
+import com.example.game.ui.PlaneUI
+import com.example.game.ui.MonsterUI
+import com.example.game.ui.WallUI
+import com.example.game.ui.SoundControlButton
+import kotlinx.coroutines.delay
+import kotlin.math.*
+import kotlin.random.Random
 
-class Level2Activity : ComponentActivity() {
-    private var mediaPlayer: MediaPlayer? = null
-    private lateinit var soundPool: android.media.SoundPool
-    private var shootSoundId: Int = 0
-    private var hitSoundId: Int = 0
-    private var coinSoundId: Int = 0
-    private var soundsLoaded = false
-    private var loadedSounds = 0
-    private val totalSounds = 3
-
+class Level2Activity : BaseGameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        soundPool = android.media.SoundPool.Builder()
-            .setMaxStreams(10)
-            .setAudioAttributes(audioAttributes)
-            .build()
-
-        soundPool.setOnLoadCompleteListener { _, _, status ->
-            if (status == 0) {
-                loadedSounds++
-                if (loadedSounds >= totalSounds) {
-                    soundsLoaded = true
-                    Log.d("SoundPool", "All sounds loaded successfully!")
-                }
-            } else {
-                Log.e("SoundPool", "Failed to load sound, status: $status")
-            }
-        }
-
-        shootSoundId = soundPool.load(this, R.raw.shoot, 1)
-        hitSoundId = soundPool.load(this, R.raw.hit, 1)
-        coinSoundId = soundPool.load(this, R.raw.hit, 1)
-
-        try {
-            mediaPlayer = MediaPlayer.create(this, R.raw.background_music).apply {
-                setOnPreparedListener { start() }
-                setOnCompletionListener { seekTo(0); start() }
-                setVolume(1f, 1f)
-            }
-        } catch (e: Exception) {
-            Log.e("MediaPlayer", "Failed to initialize MediaPlayer: ${e.message}")
-        }
+        initAudio()
 
         setContent {
             val density = LocalDensity.current
             val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
             val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
-            Level2Screen(
-                onExit = { finish() },
+
+            Level2Game(
+                screenWidthPx = screenWidthPx,
+                screenHeightPx = screenHeightPx,
                 soundPool = soundPool,
                 shootSoundId = shootSoundId,
                 hitSoundId = hitSoundId,
-                coinSoundId = coinSoundId,
-                screenWidthPx = screenWidthPx,
-                screenHeightPx = screenHeightPx,
-                mediaPlayer = mediaPlayer
+                onExit = { finish() }
             )
         }
     }
-
-    override fun onPause() {
-        super.onPause()
-        mediaPlayer?.pause()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        try { mediaPlayer?.start() } catch (_: Exception) {}
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            mediaPlayer?.release()
-            soundPool.release()
-        } catch (_: Exception) {}
-    }
-}
-
-// ---------------------- DATA CLASSES ----------------------
-data class Bullet2(var x: Float, var y: Float)
-data class MonsterState2(
-    var x: Float,
-    var y: MutableState<Float>,
-    var speed: Float,
-    var hp: MutableState<Int>,
-    var angle: Float,
-    var radius: Float,
-    var alive: MutableState<Boolean> = mutableStateOf(true)
-)
-
-data class MonsterGroup(
-    var centerX: MutableState<Float>,
-    var centerY: MutableState<Float>,
-    var speedX: Float,
-    var speedY: Float,
-    var monsters: List<MonsterState2>,
-)
-
-data class Coin2(
-    var x: Float,
-    var y: MutableState<Float>,
-    var speed: Float,
-    var collected: MutableState<Boolean> = mutableStateOf(false)
-)
-
-data class BagCoinDisplay2(
-    val x: Float,
-    val y: Float,
-    val score: Int
-)
-
-// ---------------------- HELPER FUNCTIONS ----------------------
-private fun respawnMonster(m: MonsterState2, screenWidthPx: Float) {
-    m.y.value = -Random.nextInt(200, 600).toFloat()
-    m.x = Random.nextFloat() * (screenWidthPx - 100f)
-    m.speed = Random.nextFloat() * 0.5f + 0.5f
-    m.hp.value = 100
-    m.alive.value = true
-}
-
-private fun respawnCoin(c: Coin2, screenWidthPx: Float) {
-    c.y.value = -Random.nextInt(100, 600).toFloat()
-    c.x = Random.nextFloat() * (screenWidthPx - 50f)
-    c.speed = Random.nextFloat() * 2f + 1f
-    c.collected.value = false
-}
-
-private fun checkCollisionPlaneMonster(
-    planeX: Float,
-    planeY: Float,
-    planeWidth: Float = 100f,
-    planeHeight: Float = 100f,
-    monster: MonsterState2
-): Boolean {
-    val monsterWidth = 80f
-    val monsterHeight = 80f
-
-    val planeRect = RectF(planeX, planeY, planeX + planeWidth, planeY + planeHeight)
-    val monsterRect = RectF(monster.x, monster.y.value, monster.x + monsterWidth, monster.y.value + monsterHeight)
-
-    val intersects = RectF.intersects(planeRect, monsterRect)
-    Log.d("COLLISION_DEBUG", "PlaneRect: $planeRect, MonsterRect: $monsterRect, Intersects: $intersects")
-    return intersects
-}
-
-private fun checkCollisionPlaneCoin(
-    planeX: Float,
-    planeY: Float,
-    planeWidth: Float = 100f,
-    planeHeight: Float = 100f,
-    coin: Coin2
-): Boolean {
-    val coinWidth = 40f
-    val coinHeight = 40f
-
-    val planeRect = RectF(planeX, planeY, planeX + planeWidth, planeY + planeHeight)
-    val coinRect = RectF(coin.x, coin.y.value, coin.x + coinWidth, coin.y.value + coinHeight)
-
-    return RectF.intersects(planeRect, coinRect)
-}
-
-private fun checkCollisionBulletMonster(
-    bullet: Bullet2,
-    monster: MonsterState2
-): Boolean {
-    val bulletWidth = 30f
-    val bulletHeight = 30f
-    val monsterWidth = 80f
-    val monsterHeight = 80f
-
-    val bulletRect = RectF(bullet.x, bullet.y, bullet.x + bulletWidth, bullet.y + bulletHeight)
-    val monsterRect = RectF(monster.x, monster.y.value, monster.x + monsterWidth, monster.y.value + monsterHeight)
-
-    return RectF.intersects(bulletRect, monsterRect)
 }
 
 @Composable
-fun Level2Screen(
-    onExit: () -> Unit,
+fun Level2Game(
+    screenWidthPx: Float,
+    screenHeightPx: Float,
     soundPool: android.media.SoundPool,
     shootSoundId: Int,
     hitSoundId: Int,
-    coinSoundId: Int,
-    screenWidthPx: Float,
-    screenHeightPx: Float,
-    mediaPlayer: MediaPlayer?
+    onExit: () -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val playerName = PrefManager.getPlayerName(context)
+    val coroutineScope = rememberCoroutineScope()
 
-    var musicEnabled by remember { mutableStateOf(true) }
-    var sfxEnabled by remember { mutableStateOf(true) }
+    // --- State ---
     var totalScore by remember { mutableStateOf(0) }
     var currentSessionScore by remember { mutableStateOf(0) }
-    var expanded by remember { mutableStateOf(false) }
-    var isGameOver by remember { mutableStateOf(false) }
-    var isLevelClear by remember { mutableStateOf(false) }
-    val monsterGroups = remember { mutableStateListOf<MonsterGroup>() }
-    val monsters = remember { mutableStateListOf<MonsterState2>() }
-    var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
-    var lastFirebaseSync by remember { mutableStateOf(0L) }
-    val firebaseSyncInterval = 5000L
-
-    fun spawnMonsterGroup(centerX: Float, centerY: Float) {
-        val newMonsters = List(3) { i ->
-            MonsterState2(
-                x = centerX,
-                y = mutableStateOf(centerY),
-                speed = 0f,
-                hp = mutableStateOf(100),
-                angle = (i * 2 * PI / 3).toFloat(),
-                radius = 150f
-            )
-        }
-
-        val group = MonsterGroup(
-            centerX = mutableStateOf(centerX),
-            centerY = mutableStateOf(centerY),
-            speedX = (Random.nextFloat() * 60f - 30f),
-            speedY = (Random.nextFloat() * 60f + 30f),
-            monsters = newMonsters
-        )
-
-        monsterGroups.add(group)
-        monsters.addAll(newMonsters)
-        Log.d("SPAWN_DEBUG", "Spawned group at centerY: ${group.centerY.value}")
-    }
-
-    fun spawnMonsterGroupFromRandomSide() {
-        val side = Random.nextInt(4)
-        val centerX: Float
-        val centerY: Float
-
-        when (side) {
-            0 -> {
-                centerX = Random.nextFloat() * (screenWidthPx - 400f) + 200f
-                centerY = -300f
-            }
-            1 -> {
-                centerX = screenWidthPx + 300f
-                centerY = Random.nextFloat() * (screenHeightPx - 600f) + 200f
-            }
-            2 -> {
-                centerX = Random.nextFloat() * (screenWidthPx - 400f) + 200f
-                centerY = screenHeightPx - 400f
-            }
-            else -> {
-                centerX = -300f
-                centerY = Random.nextFloat() * (screenHeightPx - 600f) + 200f
-            }
-        }
-
-        spawnMonsterGroup(centerX, centerY)
-    }
-
-    fun startLevel(monsterGroups: MutableList<MonsterGroup>, monsters: MutableList<MonsterState2>) {
-        monsters.clear()
-        monsterGroups.clear()
-        isLevelClear = false
-        currentSessionScore = 0
-    }
-
-    LaunchedEffect(Unit) {
-        startLevel(monsterGroups, monsters)
-        repeat(10) { i ->
-            spawnMonsterGroupFromRandomSide()
-            Log.d("SPAWN_DEBUG", "Spawned monster group $i, total monsters: ${monsters.size}")
-            delay(6000)
-        }
-    }
-
-    LaunchedEffect(playerName) {
-        if (!playerName.isNullOrBlank()) {
-            FirebaseHelper.getScore(playerName) { score ->
-                totalScore = score
-            }
-            FirebaseHelper.getChestItems(playerName) { items ->
-                chestItems = items
-                if (items.isEmpty()) {
-                    Log.d("CHEST_DEBUG", "🔧 DEBUG: Adding test items to empty chest")
-                    val testItems = listOf(
-                        ChestItem("Pháo sáng", R.drawable.fireworks),
-                        ChestItem("Bom", R.drawable.bom1),
-                        ChestItem("Khiên", R.drawable.shield1)
-                    )
-                    chestItems = testItems
-                }
-            }
-            if (totalScore == 0) {
-                Log.d("CHEST_DEBUG", "🔧 DEBUG: Giving player 50 test coins")
-                totalScore = 50
-            }
-        }
-    }
-
-    fun syncScoreToFirebase(force: Boolean = false) {
-        val currentTime = System.currentTimeMillis()
-        if (force || currentTime - lastFirebaseSync > firebaseSyncInterval) {
-            if (!playerName.isNullOrBlank()) {
-                FirebaseHelper.updateScore(playerName, totalScore)
-                lastFirebaseSync = currentTime
-            }
-        }
-    }
+    var planeHp by remember { mutableStateOf(100) }
 
     var shieldActive by remember { mutableStateOf(false) }
     var wallActive by remember { mutableStateOf(false) }
     var timeActive by remember { mutableStateOf(false) }
-    var shieldTimeLeft by remember { mutableStateOf(0f) }
-    var wallTimeLeft by remember { mutableStateOf(0f) }
-    var timeTimeLeft by remember { mutableStateOf(0f) }
 
-    LaunchedEffect(musicEnabled) {
-        try {
-            if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
-        } catch (_: Exception) {}
+    var isGameOver by remember { mutableStateOf(false) }
+    var isLevelClear by remember { mutableStateOf(false) }
+    var showGameEndDialog by remember { mutableStateOf(false) }
+
+    // Show dialog when game ends instead of navigating to new activity
+    LaunchedEffect(isGameOver, isLevelClear) {
+        if (isGameOver || isLevelClear) {
+            delay(500)
+            showGameEndDialog = true
+        }
     }
 
-    var planeX by remember { mutableStateOf(screenWidthPx / 2f - 50f) }
+    // --- Plane setup ---
+    var planeX by remember { mutableStateOf(screenWidthPx / 2 - 50f) }
     val planeY = screenHeightPx - 250f
-    val planeHp = remember { mutableStateOf(1000) }
+    val planeWidth = 100f
+    val planeHeight = 100f
 
-    LaunchedEffect(planeHp.value) {
-        Log.d("PLANE_HP", "Plane HP changed: ${planeHp.value}")
-    }
-
-    val bullets = remember { mutableStateListOf<Bullet2>() }
-
-    val coins = remember {
-        List(5) {
-            val speed = Random.nextFloat() * 2f + 1f
-            Coin2(
-                x = Random.nextFloat() * (screenWidthPx - 50f),
-                y = mutableStateOf(-Random.nextInt(100, 600).toFloat()),
-                speed = speed
-            )
-        }
-    }
-
-    val bagCoins = remember { mutableStateListOf<BagCoinDisplay2>() }
-
-    fun applyChestItemEffect(item: ChestItem) {
-        Log.d("Level2Screen", "🎁 CHEST ITEM SELECTED: ${item.name} 🎁")
-        try {
-            ChestItemEffects.applyLevel2Effect(
-                item = item,
-                monsters = monsters,
-                coins = coins,
-                bagCoins = bagCoins,
-                coroutineScope = coroutineScope,
-                screenWidthPx = screenHeightPx,
-                planeX = planeX,
-                onScoreUpdate = { scoreToAdd ->
-                    Log.d("Level2Screen", "Score update: +$scoreToAdd")
-                    totalScore += scoreToAdd
-                    currentSessionScore += scoreToAdd
-                    syncScoreToFirebase()
-                },
-                onShieldActivate = {
-                    Log.d("Level2Screen", "Shield activated!")
-                    shieldActive = true
-                },
-                onWallActivate = {
-                    Log.d("Level2Screen", "Wall activated!")
-                    wallActive = true
-                },
-                onTimeActivate = {
-                    Log.d("Level2Screen", "Time freeze activated!")
-                    timeActive = true
-                    timeTimeLeft = 10f
-                },
-                onLevelClear = {
-                    Log.d("Level2Screen", "🏆 LEVEL CLEAR TRIGGERED! Setting isLevelClear = true 🏆")
-                    isLevelClear = true
-                }
-            )
-            val updatedItems = chestItems.toMutableList().also { it.remove(item) }
-            chestItems = updatedItems
-            if (!playerName.isNullOrBlank()) {
-                FirebaseHelper.updateChest(playerName, updatedItems)
-            }
-        } catch (e: Exception) {
-            Log.e("LEVEL2_DEBUG", "Exception in Level2 ChestItemEffects: ${e.message}")
-        }
-    }
-
-    LaunchedEffect(shieldActive) {
-        if (shieldActive) {
-            shieldTimeLeft = 10f
-            while (shieldTimeLeft > 0) {
-                delay(100)
-                shieldTimeLeft -= 0.1f
-            }
-            shieldActive = false
-        }
-    }
-
-    LaunchedEffect(wallActive) {
-        if (wallActive) {
-            wallTimeLeft = 10f
-            while (wallTimeLeft > 0) {
-                delay(100)
-                wallTimeLeft -= 0.1f
-            }
-            wallActive = false
-        }
-    }
-
-    LaunchedEffect(timeActive) {
-        if (timeActive) {
-            while (timeTimeLeft > 0) {
-                delay(100)
-                timeTimeLeft -= 0.1f
-            }
-            timeActive = false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (!isGameOver) {
-            bullets.add(Bullet2(planeX - 20f, planeY))
-            bullets.add(Bullet2(planeX + 20f, planeY))
-
-            delay(350)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (!isGameOver) {
-            bullets.forEach { it.y -= 20f }
-            bullets.removeAll { it.y < -40f }
+    // --- Background ---
+    var bg1Y by remember { mutableStateOf(0f) }
+    var bg2Y by remember { mutableStateOf(-screenHeightPx) }
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            bg1Y += 4f
+            bg2Y += 4f
+            if (bg1Y >= screenHeightPx) bg1Y = bg2Y - screenHeightPx
+            if (bg2Y >= screenHeightPx) bg2Y = bg1Y - screenHeightPx
             delay(16)
         }
     }
 
-    monsterGroups.forEach { group ->
-        LaunchedEffect(group, timeActive) {
-            while (!isGameOver) {
-                if (!timeActive) {
-                    group.centerX.value += group.speedX
-                    group.centerY.value += group.speedY
+    // --- Entities: 5 rotating monster groups ---
+    val monsterGroups = remember {
+        List(5) { i ->
+            RotatingMonsterGroup(
+                centerX = Random.nextFloat() * (screenWidthPx - 300f) + 150f, // Random X position
+                centerY = -300f, // Start just above screen
+                radius = 100f,
+                angleOffset = Random.nextFloat() * 360f, // Random starting angle
+                vx = if (Random.nextBoolean()) Random.nextFloat() * 2f + 2f else -(Random.nextFloat() * 2f + 2f),
+                vy = Random.nextFloat() * 2f + 3f // Random vertical speed (3-5f)
+            ).apply {
+                // Initially set monsters as dead - they will spawn with delay
+                monsters.forEach { it.alive.value = false }
+            }
+        }
+    }
 
-                    val margin = 200f
-                    if (group.centerX.value - margin < 0) {
-                        group.centerX.value = margin
-                        group.speedX = kotlin.math.abs(group.speedX)
-                    } else if (group.centerX.value + margin > screenWidthPx) {
-                        group.centerX.value = screenWidthPx - margin
-                        group.speedX = -kotlin.math.abs(group.speedX)
+    // Track respawn times for each group
+    val groupRespawnTimes = remember { MutableList(monsterGroups.size) { i -> System.currentTimeMillis() + (i * 3000L) } }
+
+    val coins = remember {
+        List(7) {
+            BaseCoin(
+                x = Random.nextFloat() * (screenWidthPx - 50f),
+                y = mutableStateOf(-Random.nextInt(100, 800).toFloat()),
+                speed = Random.nextFloat() * 2f + 1.5f
+            )
+        }
+    }
+
+    val bullets = remember { mutableStateListOf<Bullet>() }
+    val bagCoins = remember { mutableStateListOf<BagCoinDisplay>() }
+    var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
+
+    // --- Load player data ---
+    LaunchedEffect(Unit) {
+        if (!playerName.isNullOrBlank()) {
+            FirebaseHelper.syncNewPlayer(playerName)
+            FirebaseHelper.getScore(playerName) { totalScore = it }
+            FirebaseHelper.getChestItems(playerName) { chestItems = it }
+        }
+    }
+
+    // --- Shooting ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            bullets.add(Bullet(planeX + planeWidth / 2 - 15f, planeY))
+            SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
+            delay(300)
+        }
+    }
+
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            bullets.forEach { it.y -= 25f }
+            bullets.removeAll { it.y < -50f }
+            delay(16)
+        }
+    }
+
+    // --- Monster groups movement + rotation ---
+    monsterGroups.forEachIndexed { index, group ->
+        LaunchedEffect(group, isGameOver, isLevelClear) {
+            while (!isGameOver && !isLevelClear) {
+                // Check if group needs to respawn
+                val allDead = group.monsters.all { !it.alive.value }
+                if (allDead && System.currentTimeMillis() >= groupRespawnTimes[index]) {
+                    // Respawn group at random position
+                    group.centerX = Random.nextFloat() * (screenWidthPx - 300f) + 150f
+                    group.centerY = -300f
+                    group.vx = if (Random.nextBoolean()) Random.nextFloat() * 2f + 2f else -(Random.nextFloat() * 2f + 2f)
+                    group.vy = Random.nextFloat() * 2f + 3f
+                    group.angleOffset = Random.nextFloat() * 360f // Random rotation angle
+                    group.monsters.forEach { m ->
+                        m.hp.value = 100
+                        m.alive.value = true
+                    }
+                    // Update positions to match new center and angle
+                    group.updatePositions()
+                    // Set next respawn time with random delay (3-5 seconds)
+                    groupRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 5000)
+                }
+
+                if (!timeActive && !allDead) {
+                    // Rotate monsters
+                    group.angleOffset += 3f
+
+                    // Move center
+                    group.centerX += group.vx
+                    group.centerY += group.vy
+
+                    // Bounce off LEFT wall - reverse to RIGHT
+                    if (group.centerX <= 150f) {
+                        group.centerX = 150f
+                        group.vx = abs(group.vx) // Bounce to opposite direction (right)
                     }
 
-                    if (group.centerY.value - margin < 0) {
-                        group.centerY.value = margin
-                        group.speedY = kotlin.math.abs(group.speedY)
-                    } else if (group.centerY.value + margin > screenHeightPx - 100f) {
-                        group.centerY.value = screenHeightPx - 100f - margin
-                        group.speedY = -kotlin.math.abs(group.speedY)
+                    // Bounce off RIGHT wall - reverse to LEFT
+                    if (group.centerX >= screenWidthPx - 150f) {
+                        group.centerX = screenWidthPx - 150f
+                        group.vx = -abs(group.vx) // Bounce to opposite direction (left)
                     }
 
-                    group.monsters.forEachIndexed { i, m ->
-                        m.angle += 0.08f
-                        m.x = group.centerX.value + m.radius * cos(m.angle + i * 2 * PI / 3).toFloat()
-                        m.y.value = group.centerY.value + m.radius * sin(m.angle + i * 2 * PI / 3).toFloat()
+                    // Bounce off TOP - reverse to DOWN
+                    if (group.centerY <= 150f) {
+                        group.centerY = 150f
+                        group.vy = abs(group.vy) // Bounce to opposite direction (down)
                     }
 
-                    Log.d("MOVEMENT_DEBUG", "Group centerY: ${group.centerY.value}")
+                    // Bounce off BOTTOM - reverse to UP
+                    if (group.centerY >= screenHeightPx - 300f) {
+                        group.centerY = screenHeightPx - 300f
+                        group.vy = -abs(group.vy) // Bounce to opposite direction (up)
+                    }
+
+                    // Update monster positions
+                    group.updatePositions()
+
+                    // Respawn if group goes way off screen (safety check)
+                    if (group.centerY > screenHeightPx + 500f || group.centerY < -1000f) {
+                        groupRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(2000, 5000)
+                        group.monsters.forEach { it.alive.value = false }
+                    }
                 }
                 delay(16)
             }
         }
     }
 
+    // --- Coin movement ---
     coins.forEach { c ->
-        LaunchedEffect(c, timeActive) {
-            while (!isGameOver) {
+        LaunchedEffect(c, isGameOver, isLevelClear) {
+            while (!isGameOver && !isLevelClear) {
                 if (!c.collected.value && !timeActive) {
                     c.y.value += c.speed
-                    if (c.y.value > screenHeightPx + 50f) respawnCoin(c, screenWidthPx)
+                    if (c.y.value > screenHeightPx) {
+                        c.y.value = -Random.nextInt(100, 800).toFloat()
+                        c.x = Random.nextFloat() * (screenWidthPx - 50f)
+                    }
                 }
-                delay(16)
+                delay(32)
             }
         }
     }
 
-    var lastHitTime by remember { mutableStateOf(0L) }
-    fun playHitSound() {
-        val now = System.currentTimeMillis()
-        if (now - lastHitTime > 50 && sfxEnabled) {
-            try {
-                val result = soundPool.play(hitSoundId, 0.8f, 0.8f, 2, 0, 1f)
-                if (result == 0) {
-                    Log.w("SoundPool", "Hit sound not ready yet")
-                }
-            } catch (e: Exception) {
-                Log.e("SoundPool", "Error playing hit sound: ${e.message}")
-            }
-            lastHitTime = now
-        }
-    }
-
-    fun playShootSound() {
-        if (sfxEnabled) {
-            try {
-                val result = soundPool.play(shootSoundId, 0.5f, 0.5f, 1, 0, 1f)
-                if (result == 0) {
-                    Log.w("SoundPool", "Shoot sound not ready yet")
-                }
-            } catch (e: Exception) {
-                Log.e("SoundPool", "Error playing shoot sound: ${e.message}")
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (!isGameOver) {
-            Log.d("COLLISION_LOOP", "Checking collisions, isGameOver: $isGameOver, monsterCount: ${monsters.size}")
-            val bulletsToRemove = mutableListOf<Bullet2>()
-
-            monsters.forEach { m ->
-                if (m.alive.value) {
-                    Log.d("COLLISION_LOOP", "Checking monster at (${m.x}, ${m.y.value}), alive: ${m.alive.value}")
-                    val collision = checkCollisionPlaneMonster(planeX, planeY, 100f, 100f, m)
-                    Log.d("COLLISION_DEBUG", "Plane: ($planeX, $planeY), Monster: (${m.x}, ${m.y.value}), Collision: $collision, Shield: $shieldActive")
-                    if (collision) {
-                        Log.e("COLLISION_DEBUG", "🚨 COLLISION DETECTED! Plane: ($planeX, $planeY) Monster: (${m.x}, ${m.y.value})")
-                        Log.e("COLLISION_DEBUG", "Shield Active: $shieldActive")
-
-                        if (!shieldActive) {
-                            val oldHp = planeHp.value
-                            planeHp.value -= 50
-                            Log.e("COLLISION_DEBUG", "🔥 PLANE DAMAGED! HP: $oldHp → ${planeHp.value}")
-
-                            if (planeHp.value <= 0) {
-                                planeHp.value = 0
-                                isGameOver = true
-                                Log.e("COLLISION_DEBUG", "💀 PLANE DEAD - GAME OVER!")
+    // --- Bullet vs Monster collision ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            val iter = bullets.iterator()
+            while (iter.hasNext()) {
+                val b = iter.next()
+                monsterGroups.forEach { group ->
+                    group.monsters.forEach { m ->
+                        if (CollisionUtils.checkCollisionBulletMonster(b, m)) {
+                            m.hp.value -= 25
+                            // Play hit sound
+                            SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
+                            iter.remove()
+                            if (m.hp.value <= 0) {
+                                m.alive.value = false
                             }
-                        } else {
-                            Log.e("COLLISION_DEBUG", "🛡️ SHIELD BLOCKED DAMAGE!")
                         }
-
-                        m.alive.value = false
-                        Log.e("COLLISION_DEBUG", "👻 MONSTER KILLED BY COLLISION")
                     }
                 }
             }
+            delay(16)
+        }
+    }
 
+    // --- Plane - Coin collision ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
             coins.forEach { c ->
-                if (!c.collected.value && checkCollisionPlaneCoin(planeX, planeY, 100f, 100f, c)) {
+                if (!c.collected.value && CollisionUtils.checkCollisionPlaneCoin(planeX, planeY, planeWidth, planeHeight, c)) {
                     c.collected.value = true
                     totalScore += 1
                     currentSessionScore += 1
-                    syncScoreToFirebase()
-
-                    val bag = BagCoinDisplay2(c.x, c.y.value, 1)
+                    val bag = BagCoinDisplay(c.x, c.y.value, 1)
                     bagCoins.add(bag)
+                    if (!playerName.isNullOrBlank()) FirebaseHelper.updateScore(playerName, totalScore)
+                }
+            }
+            delay(50)
+        }
+    }
 
-                    coroutineScope.launch {
-                        delay(1000)
-                        bagCoins.remove(bag)
-                        respawnCoin(c, screenWidthPx)
+    // --- Plane - Monster collision ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            monsterGroups.forEach { group ->
+                group.monsters.forEach { m ->
+                    if (m.alive.value && m.hp.value > 0 &&
+                        CollisionUtils.checkCollisionPlaneMonster(planeX, planeY, planeWidth, planeHeight, m)
+                    ) {
+                        if (!shieldActive && !wallActive) planeHp -= 50
+                        m.hp.value = 0
+                        m.alive.value = false
                     }
                 }
             }
+            if (planeHp <= 0) isGameOver = true
+            delay(50)
+        }
+    }
 
-            bullets.toList().forEach { b ->
-                monsters.forEach { m ->
-                    if (m.alive.value && checkCollisionBulletMonster(b, m)) {
-                        val oldHp = m.hp.value
-                        m.hp.value -= 20
-                        Log.d("COLLISION", "💥 MONSTER HIT! HP: $oldHp → ${m.hp.value}")
-                        bulletsToRemove.add(b)
-                        playHitSound()
-                        if (m.hp.value <= 0) {
-                            m.hp.value = 0
-                            m.alive.value = false
-                            Log.d("COLLISION", "☠️ MONSTER KILLED BY BULLET - STAYS DEAD")
+    // --- Wall - Monster collision ---
+    LaunchedEffect(wallActive, isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            if (wallActive) {
+                monsterGroups.forEach { group ->
+                    group.monsters.forEach { m ->
+                        if (m.alive.value && m.hp.value > 0) {
+                            if (CollisionUtils.checkCollisionWallMonster(planeY, m)) {
+                                m.hp.value -= 2
+                                if (m.hp.value <= 0) {
+                                    m.alive.value = false
+                                }
+                            }
                         }
                     }
                 }
             }
-            bullets.removeAll(bulletsToRemove)
-
-            delay(16)
+            delay(50)
         }
     }
 
-    LaunchedEffect(Unit) {
-        while (!isGameOver && !isLevelClear) {
-            delay(5000)
-            val allMonstersActuallyDead = monsters.isNotEmpty() && monsters.all {
-                !it.alive.value && it.hp.value <= 0
-            }
-
-            if (allMonstersActuallyDead) {
-                delay(3000)
-                if (monsters.all { !it.alive.value && it.hp.value <= 0 }) {
-                    isLevelClear = true
-                }
-            }
-        }
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    if (!isGameOver) planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - 100f)
-                    change.consume()
-                }
-            }
-    ) {
-        MovingBackgroundOffset2(screenWidthPx)
-
-        IconButton(
-            onClick = {
-                syncScoreToFirebase(force = true)
-                coroutineScope.launch {
-                    delay(500)
-                    onExit()
-                }
+    // --- Use chest item ---
+    fun useChestItem(item: ChestItem) {
+        // Flatten all monsters from groups for ChestItemEffectsBase
+        val allMonsters = monsterGroups.flatMap { it.monsters }
+        ChestItemEffectsBase.applyItemEffect(
+            itemName = item.name,
+            monsters = allMonsters,
+            coins = coins,
+            bagCoins = bagCoins,
+            coroutineScope = coroutineScope,
+            screenHeightPx = screenHeightPx,
+            planeX = planeX,
+            onScoreUpdate = { add ->
+                totalScore += add
+                currentSessionScore += add
+                if (!playerName.isNullOrBlank()) FirebaseHelper.updateScore(playerName, totalScore)
             },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp)
-        ) {
-            Icon(painterResource(R.drawable.ic_close), contentDescription = "Exit")
-        }
+            onShieldToggle = { active -> shieldActive = active },
+            onWallToggle = { active -> wallActive = active },
+            onTimeToggle = { active -> timeActive = active },
+            onLevelClear = { isLevelClear = true }
+        )
+        chestItems = chestItems - item
+        if (!playerName.isNullOrBlank()) FirebaseHelper.updateChest(playerName, chestItems)
+    }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 70.dp, end = 16.dp)
-        ) {
-            IconButton(onClick = { expanded = true }) {
-                Icon(
-                    painter = painterResource(id = R.drawable.speaker),
-                    contentDescription = "Sound Options",
-                    tint = if (musicEnabled || sfxEnabled) Color.White else Color.Gray,
-                    modifier = Modifier.size(30.dp)
-                )
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(
-                    text = { Text("Nhạc nền") },
-                    onClick = {
-                        musicEnabled = !musicEnabled
-                        if (musicEnabled) mediaPlayer?.start() else mediaPlayer?.pause()
-                        expanded = false
-                    },
-                    trailingIcon = { Checkbox(checked = musicEnabled, onCheckedChange = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Hiệu ứng (Hit + Shoot)") },
-                    onClick = { sfxEnabled = !sfxEnabled; expanded = false },
-                    trailingIcon = { Checkbox(checked = sfxEnabled, onCheckedChange = null) }
-                )
-            }
+    // --- Drag plane ---
+    val dragModifier = Modifier.pointerInput(Unit) {
+        detectDragGestures { change, dragAmount ->
+            planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - planeWidth)
+            change.consume()
         }
+    }
 
-        monsters.forEach { m ->
-            if (!isGameOver && m.alive.value) {
-                Image(
-                    painter = painterResource(R.drawable.quaivat1),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset(m.x.roundToInt(), m.y.value.roundToInt()) }
-                        .size(80.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Canvas(
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset(m.x.roundToInt(), (m.y.value - 10f).roundToInt()) }
-                        .size(width = 80.dp, height = 5.dp)
-                ) {
-                    val hpRatio = m.hp.value / 100f
-                    drawRect(
-                        color = Color.Red,
-                        size = Size(size.width * hpRatio, size.height)
-                    )
-                }
+    // --- UI ---
+    Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
+        // Background
+        Image(
+            painter = painterResource(R.drawable.nen2),
+            contentDescription = null,
+            modifier = Modifier.absoluteOffset { IntOffset(0, bg1Y.roundToInt()) }.fillMaxSize()
+        )
+        Image(
+            painter = painterResource(R.drawable.nen2),
+            contentDescription = null,
+            modifier = Modifier.absoluteOffset { IntOffset(0, bg2Y.roundToInt()) }.fillMaxSize()
+        )
+
+        // Monsters (using MonsterUI component)
+        monsterGroups.forEach { group ->
+            group.monsters.forEach { m ->
+                MonsterUI(monster = m)
             }
         }
 
-        coins.forEach { c ->
-            if (!c.collected.value && !isGameOver) {
-                Image(
-                    painter = painterResource(R.drawable.coin),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
-                        .size(40.dp),
-                    contentScale = ContentScale.Fit
-                )
-            }
-        }
-
-        bagCoins.forEach { b ->
+        // Coins
+        coins.filter { !it.collected.value }.forEach { c ->
             Image(
-                painter = painterResource(R.drawable.bagcoin),
+                painter = painterResource(R.drawable.coin),
+                contentDescription = null,
+                modifier = Modifier
+                    .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
+                    .size(40.dp)
+            )
+        }
+
+        // BagCoin animated views
+        bagCoins.toList().forEach { bag ->
+            BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
+                bagCoins.remove(finishedBag)
+            })
+        }
+
+        // Bullets
+        bullets.forEach { b ->
+            Image(
+                painter = painterResource(R.drawable.dan2),
                 contentDescription = null,
                 modifier = Modifier
                     .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                    .size(40.dp),
-                contentScale = ContentScale.Fit
-            )
-            Text(
-                text = "${b.score}",
-                color = Color.Yellow,
-                fontSize = 16.sp,
-                modifier = Modifier.absoluteOffset { IntOffset((b.x + 10).roundToInt(), (b.y + 10).roundToInt()) }
+                    .size(30.dp)
             )
         }
 
-        bullets.forEach { b ->
-            if (!isGameOver) {
-                Image(
-                    painter = painterResource(R.drawable.dan2),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                        .size(30.dp),
-                    contentScale = ContentScale.Fit
-                )
-            }
+        // Plane (using PlaneUI component)
+        PlaneUI(
+            planeX = planeX,
+            planeY = planeY,
+            planeHp = planeHp,
+            shieldActive = shieldActive
+        )
+
+        // Wall (using WallUI component)
+        if (wallActive) {
+            WallUI(planeY = planeY)
         }
 
-        if (!isGameOver) {
-            Box(
-                modifier = Modifier
-                    .absoluteOffset { IntOffset(planeX.roundToInt(), planeY.roundToInt()) }
-                    .size(100.dp)
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.maybay1),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(alpha = if (shieldActive) 0.7f else 1f),
-                    contentScale = ContentScale.Fit
-                )
-
-                Canvas(
-                    modifier = Modifier
-                        .offset(y = (-15).dp)
-                        .fillMaxWidth()
-                        .height(10.dp)
-                ) {
-                    drawRoundRect(color = Color.Gray, size = size)
-                    val ratio = planeHp.value / 1000f
-                    drawRoundRect(color = Color.Green, size = Size(size.width * ratio, size.height))
-                }
-            }
-
-            if (shieldActive) {
-                Canvas(
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset((planeX - 30f).roundToInt(), (planeY - 30f).roundToInt()) }
-                        .size(160.dp)
-                ) {
-                    drawCircle(
-                        color = Color.Cyan.copy(alpha = 0.3f),
-                        radius = 80.dp.toPx(),
-                        center = androidx.compose.ui.geometry.Offset(80.dp.toPx(), 80.dp.toPx())
-                    )
-                    drawCircle(
-                        color = Color.Cyan,
-                        radius = 80.dp.toPx(),
-                        center = androidx.compose.ui.geometry.Offset(80.dp.toPx(), 80.dp.toPx()),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
-                    )
-                }
-
-                Text(
-                    text = "🛡️ ${shieldTimeLeft.toInt()}s",
-                    color = Color.Cyan,
-                    fontSize = 16.sp,
-                    modifier = Modifier.absoluteOffset {
-                        IntOffset((planeX - 20f).roundToInt(), (planeY - 50f).roundToInt())
+        // Top bar
+        TopBarUI(
+            bagCoinScore = totalScore,
+            chestItems = chestItems,
+            onBuyItem = { item, price ->
+                if (totalScore >= price) {
+                    totalScore -= price
+                    chestItems = chestItems + item
+                    if (!playerName.isNullOrBlank()) {
+                        FirebaseHelper.updateScore(playerName, totalScore)
+                        FirebaseHelper.updateChest(playerName, chestItems)
                     }
-                )
-            }
-        }
+                }
+            },
+            onUseChestItem = { useChestItem(it) }
+        )
 
+        // --- Sound Control Button (top-right corner) ---
         Box(
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp)
+                .fillMaxSize()
+                .padding(16.dp),
+            contentAlignment = Alignment.TopEnd
         ) {
-            TopBarUI(
-                bagCoinScore = totalScore,
-                chestItems = chestItems,
-                onBuyItem = { item: ChestItem, price: Int ->
-                    if (totalScore >= price) {
-                        totalScore -= price
-                        chestItems = chestItems.toList() + item
-                        syncScoreToFirebase(force = true)
-                        if (!playerName.isNullOrBlank()) {
-                            FirebaseHelper.updateChest(playerName, chestItems)
-                        }
-                    }
-                },
-                onUseChestItem = { item: ChestItem ->
-                    applyChestItemEffect(item)
-                }
-            )
+            SoundControlButton()
         }
+    }
 
-        if (isGameOver) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xAA000000)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "GAME OVER",
-                        color = Color.Red,
-                        fontSize = 36.sp
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = {
-                        syncScoreToFirebase(force = true)
-                        onExit()
-                    }) {
-                        Text(text = "Thoát", fontSize = 20.sp)
+    // --- Game End Dialog ---
+    if (showGameEndDialog) {
+        GameEndDialog(
+            isWin = isLevelClear,
+            score = currentSessionScore,
+            level = 2,
+            onDismiss = {
+                showGameEndDialog = false
+            },
+            onReplay = {
+                // Reset game state to replay
+                showGameEndDialog = false
+                isGameOver = false
+                isLevelClear = false
+                planeHp = 100
+                currentSessionScore = 0
+
+                // Reset monsters
+                monsterGroups.forEach { group ->
+                    group.centerX = Random.nextFloat() * (screenWidthPx - 300f) + 150f
+                    group.centerY = -300f
+                    group.vx = if (Random.nextBoolean()) Random.nextFloat() * 2f + 2f else -(Random.nextFloat() * 2f + 2f)
+                    group.vy = Random.nextFloat() * 2f + 3f
+                    group.angleOffset = Random.nextFloat() * 360f
+                    group.monsters.forEach { m ->
+                        m.hp.value = 100
+                        m.alive.value = false
                     }
                 }
-            }
-        }
-        if (isLevelClear) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xAA000000)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "🎉 Chúc mừng bạn đã chiến thắng! 🎉",
-                        color = Color.Green,
-                        fontSize = 32.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Bạn thu thêm được $currentSessionScore xu",
-                        color = Color.Yellow,
-                        fontSize = 24.sp
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = {
-                        syncScoreToFirebase(force = true)
-                        onExit()
-                    }) {
-                        Text(text = "Thoát", fontSize = 20.sp)
-                    }
+
+                // Reset respawn times
+                for (i in groupRespawnTimes.indices) {
+                    groupRespawnTimes[i] = System.currentTimeMillis() + (i * 3000L)
                 }
+
+                // Reset coins
+                coins.forEach { c ->
+                    c.collected.value = false
+                    c.y.value = -Random.nextInt(100, 800).toFloat()
+                    c.x = Random.nextFloat() * (screenWidthPx - 50f)
+                }
+
+                // Clear bullets
+                bullets.clear()
+            },
+            onNextLevel = {
+                // Navigate to next level handled by GameEndDialog itself
+                onExit() // Close this activity
+            },
+            onExit = {
+                // Back to main menu
+                onExit()
             }
-        }
+        )
     }
 }
 
+/**
+ * BagCoinAnimatedView for Level 2
+ * - Animates a bag coin sprite moving slightly up and fading out.
+ * - Calls onFinished(bag) when animation done so caller can remove it.
+ */
 @Composable
-fun MovingBackgroundOffset2(screenWidthPx: Float) {
-    val bg = painterResource(R.drawable.nen2)
-    val offsetX = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            offsetX.snapTo(0f)
-            offsetX.animateTo(
-                targetValue = -screenWidthPx,
-                animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
-            )
+private fun BagCoinAnimatedView(bag: BagCoinDisplay, onFinished: (BagCoinDisplay) -> Unit) {
+    var offsetY by remember { mutableStateOf(bag.y) }
+    var alpha by remember { mutableStateOf(1f) }
+
+    LaunchedEffect(bag) {
+        val duration = 800L
+        val steps = 40
+        repeat(steps) { i ->
+            offsetY -= 2f
+            alpha = 1f - (i / steps.toFloat())
+            delay(duration / steps)
         }
+        onFinished(bag)
     }
-    Box(Modifier.fillMaxSize()) {
-        Image(
-            painter = bg,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset(offsetX.value.roundToInt(), 0) },
-            contentScale = ContentScale.Crop
+
+    Image(
+        painter = painterResource(R.drawable.bagcoin),
+        contentDescription = null,
+        modifier = Modifier
+            .absoluteOffset { IntOffset(bag.x.roundToInt(), offsetY.roundToInt()) }
+            .size(60.dp)
+            .graphicsLayer { this.alpha = alpha }
+    )
+}
+
+/**
+ * Rotating Monster Group - 3 monsters rotating around a center point
+ */
+class RotatingMonsterGroup(
+    var centerX: Float,
+    var centerY: Float,
+    var radius: Float,
+    var angleOffset: Float,
+    var vx: Float, // velocity X
+    var vy: Float  // velocity Y
+) {
+    val monsters = List(3) { i ->
+        val angle = angleOffset + i * 120f
+        val rad = Math.toRadians(angle.toDouble())
+        BaseMonster(
+            x = (centerX + cos(rad) * radius).toFloat(),
+            y = mutableStateOf((centerY + sin(rad) * radius).toFloat()),
+            speed = 0f,
+            hp = mutableStateOf(100)
         )
-        Image(
-            painter = bg,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset((offsetX.value + screenWidthPx).roundToInt(), 0) },
-            contentScale = ContentScale.Crop
-        )
+    }
+
+    fun updatePositions() {
+        val angles = listOf(0f, 120f, 240f)
+        monsters.forEachIndexed { i, m ->
+            if (m.alive.value) {
+                val rad = Math.toRadians((angleOffset + angles[i]).toDouble())
+                m.x = (centerX + cos(rad) * radius).toFloat()
+                m.y.value = (centerY + sin(rad) * radius).toFloat()
+            }
+        }
     }
 }
