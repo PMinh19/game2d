@@ -121,22 +121,48 @@ fun GameScreen(
 
     // --- Entities ---
     val monsters = remember {
+<<<<<<< HEAD
         List(8) {
             BaseMonster(
                 x = Random.nextFloat() * (screenWidthPx - 120f),
                 y = mutableStateOf(-Random.nextInt(200, 2000).toFloat()),
+=======
+        List(10) {
+            BaseMonster(
+                x = Random.nextFloat() * (screenWidthPx - 100f),
+                // Spawn monsters at different Y positions (more spread out)
+                y = mutableStateOf(-Random.nextInt(200, 2000).toFloat()), // Increased range
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                 speed = Random.nextFloat() * 1.5f + 1.5f,
                 hp = mutableStateOf(100)
             )
         }
     }
 
+<<<<<<< HEAD
 
     // Track respawn times for each monster
     val monsterRespawnTimes = remember { MutableList(monsters.size) { 0L } }
     val coins = remember { mutableStateListOf<BaseCoin>() }
     val bullets = remember { mutableStateListOf<Bullet>() }
     val bagCoins = remember { mutableStateListOf<BagCoinDisplay>() }
+=======
+    // Track respawn times for each monster
+    val monsterRespawnTimes = remember { MutableList(monsters.size) { 0L } }
+
+    val coins = remember {
+        List(6) {
+            BaseCoin(
+                x = Random.nextFloat() * (screenWidthPx - 50f),
+                y = mutableStateOf(-Random.nextInt(100, 600).toFloat()),
+                speed = Random.nextFloat() * 2f + 1f
+            )
+        }
+    }
+
+    val bullets = remember { mutableStateListOf<Bullet>() }
+    val bagCoins = remember { mutableStateListOf<BagCoinDisplay>() } // uses core.BagCoinDisplay
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
     var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
 
     // --- Load player data (score / chest) ---
@@ -153,7 +179,11 @@ fun GameScreen(
         while (!isGameOver && !isLevelClear) {
             bullets.add(Bullet(planeX + planeWidth / 2f - 15f, planeY))
             SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
+<<<<<<< HEAD
             delay(200)
+=======
+            delay(350)
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
         }
     }
 
@@ -173,7 +203,11 @@ fun GameScreen(
                 if (!m.alive.value && System.currentTimeMillis() >= monsterRespawnTimes[index]) {
                     // Respawn the monster at a random position
                     m.y.value = -Random.nextInt(200, 1500).toFloat()
+<<<<<<< HEAD
                     m.x = Random.nextFloat() * (screenWidthPx - 120f)
+=======
+                    m.x = Random.nextFloat() * (screenWidthPx - 100f)
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                     m.hp.value = 100
                     m.alive.value = true
                 }
@@ -196,6 +230,11 @@ fun GameScreen(
                     val monsterBottom = m.y.value + 80f // Monster height is 80px
 
                     if (wallActive && monsterBottom >= wallTop) {
+<<<<<<< HEAD
+=======
+                        // Monster has reached wall - STOP here
+                        // Wall collision check will drain HP
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                     } else {
                         // Normal movement
                         m.y.value += m.speed
@@ -214,6 +253,7 @@ fun GameScreen(
         }
     }
 
+<<<<<<< HEAD
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             // Tạo 1 coin mới duy nhất
@@ -244,10 +284,25 @@ fun GameScreen(
                 }
 
                 delay(32L)
+=======
+    // --- Coin movement ---
+    coins.forEach { c ->
+        LaunchedEffect(c, isGameOver, isLevelClear) {
+            while (!isGameOver && !isLevelClear) {
+                if (!c.collected.value && !timeActive) {
+                    c.y.value += c.speed
+                    if (c.y.value > screenHeightPx) {
+                        c.y.value = -Random.nextInt(100, 600).toFloat()
+                        c.x = Random.nextFloat() * (screenWidthPx - 50f)
+                    }
+                }
+                delay(32)
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
             }
         }
     }
 
+<<<<<<< HEAD
 
 // --- Vòng spawn coin vô tận ---
     LaunchedEffect(isGameOver, isLevelClear) {
@@ -267,6 +322,8 @@ fun GameScreen(
     }
 
 
+=======
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
     // --- Bullet vs Monster collision ---
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
@@ -275,7 +332,13 @@ fun GameScreen(
                 val b = iter.next()
                 monsters.forEach { m ->
                     if (CollisionUtils.checkCollisionBulletMonster(b, m)) {
+<<<<<<< HEAD
                         m.hp.value -= 50
+=======
+                        // hit: reduce monster HP
+                        m.hp.value -= 25
+                        // Play hit sound
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                         SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
                         iter.remove()
                         if (m.hp.value <= 0) {
@@ -289,6 +352,10 @@ fun GameScreen(
                     }
                 }
             }
+<<<<<<< HEAD
+=======
+            // DON'T check for level clear here - let monsters respawn naturally
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
             delay(16)
         }
     }
@@ -389,7 +456,11 @@ fun GameScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             // Hình nền chính
             Image(
+<<<<<<< HEAD
                 painter = painterResource(R.drawable.lv1),
+=======
+                painter = painterResource(R.drawable.nen2),
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
@@ -398,11 +469,19 @@ fun GameScreen(
             )
             // Hình nền phụ để tạo hiệu ứng lặp
             Image(
+<<<<<<< HEAD
                 painter = painterResource(R.drawable.lv1),
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
                     .offset { IntOffset(0, (offsetY - screenHeightPx+2).roundToInt()) },
+=======
+                painter = painterResource(R.drawable.nen2),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, (offsetY - screenHeightPx).roundToInt()) },
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                 contentScale = ContentScale.Crop
             )
         }
@@ -517,15 +596,30 @@ fun GameScreen(
                     c.y.value = -Random.nextInt(100, 600).toFloat()
                     c.x = Random.nextFloat() * (screenWidthPx - 50f)
                 }
+<<<<<<< HEAD
                 bullets.clear()
             },
             onNextLevel = {
+=======
+
+                // Clear bullets
+                bullets.clear()
+            },
+            onNextLevel = {
+                // Navigate to next level handled by GameEndDialog itself
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                 onExit() // Close this activity
             },
             onExit = {
                 // Back to main menu
                 onExit()
+<<<<<<< HEAD
             }
+=======
+            },
+            playerName = playerName,
+            totalScore = totalScore
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
         )
     }
 }

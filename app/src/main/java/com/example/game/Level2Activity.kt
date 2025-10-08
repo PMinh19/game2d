@@ -121,7 +121,11 @@ fun Level2Game(
 
     // --- Entities: 5 rotating monster groups ---
     val monsterGroups = remember {
+<<<<<<< HEAD
         List(4) { i ->
+=======
+        List(5) { i ->
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
             RotatingMonsterGroup(
                 centerX = Random.nextFloat() * (screenWidthPx - 300f) + 150f, // Random X position
                 centerY = -300f, // Start just above screen
@@ -138,6 +142,7 @@ fun Level2Game(
 
     // Track respawn times for each group
     val groupRespawnTimes = remember { MutableList(monsterGroups.size) { i -> System.currentTimeMillis() + (i * 3000L) } }
+<<<<<<< HEAD
     val coins = remember { mutableStateListOf<BaseCoin>() }
     coins.forEach { c ->
         LaunchedEffect(c, isGameOver, isLevelClear) {
@@ -176,6 +181,19 @@ fun Level2Game(
 
 
 
+=======
+
+    val coins = remember {
+        List(7) {
+            BaseCoin(
+                x = Random.nextFloat() * (screenWidthPx - 50f),
+                y = mutableStateOf(-Random.nextInt(100, 800).toFloat()),
+                speed = Random.nextFloat() * 2f + 1.5f
+            )
+        }
+    }
+
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
     val bullets = remember { mutableStateListOf<Bullet>() }
     val bagCoins = remember { mutableStateListOf<BagCoinDisplay>() }
     var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
@@ -194,7 +212,11 @@ fun Level2Game(
         while (!isGameOver && !isLevelClear) {
             bullets.add(Bullet(planeX + planeWidth / 2 - 15f, planeY))
             SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
+<<<<<<< HEAD
             delay(200)
+=======
+            delay(300)
+>>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
         }
     }
 

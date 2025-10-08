@@ -26,7 +26,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,8 +97,6 @@ fun MainScreen(
                 .padding(end = 16.dp, top = 20.dp) // cách mép phải và trên một chút
         )
 
-
-
         // Top bar UI (Store, Chest, BagCoin) ở góc trên trái
         Column(
             modifier = Modifier
@@ -128,6 +125,7 @@ fun MainScreen(
                 }
             )
         }
+
         val rageFont = FontFamily(Font(R.font.rage))
 
         Box(
@@ -143,11 +141,11 @@ fun MainScreen(
                 fontStyle = FontStyle.Italic,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(y = (-70).dp), //
+                    .offset(y = (-70).dp),
                 color = Color.White,
-
-                )
+            )
         }
+
         // Buttons: Play / Rank / Settings
         Column(
             modifier = Modifier
