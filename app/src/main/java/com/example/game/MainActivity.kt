@@ -81,7 +81,7 @@ fun MainScreen(
             .fillMaxSize() // chiếm toàn màn hình
     ) {
         Image(
-            painter = painterResource(id = R.drawable.manhinh),
+            painter = painterResource(id = R.drawable.nen1),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop // ảnh phủ toàn màn hình

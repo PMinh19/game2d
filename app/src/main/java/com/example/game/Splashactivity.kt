@@ -18,7 +18,11 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
@@ -33,7 +37,7 @@ class SplashActivity : ComponentActivity() {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.manhinh),
+                    painter = painterResource(id = R.drawable.nen1),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -48,17 +52,20 @@ class SplashActivity : ComponentActivity() {
                         animationSpec = tween(durationMillis = 1800)
                     )
                 }
-
+                val rageFont = FontFamily(Font(R.font.rage))
                 // Tên game
                 Text(
-                    text = "My Game",
+                    text = "SKY HERO",
+                    fontFamily = rageFont,
+                    fontSize = 55.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontStyle = FontStyle.Italic,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = (-70).dp), //
                     color = Color.White,
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontSize = 50.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    modifier = Modifier.scale(scale.value)
-                )
+
+                    )
             }
         }
 
