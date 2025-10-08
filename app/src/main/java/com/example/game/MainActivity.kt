@@ -21,10 +21,8 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.ContentScale
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,17 +76,21 @@ fun MainScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Background
+    Box(
+        modifier = Modifier
+            .fillMaxSize() // chiếm toàn màn hình
+    ) {
         Image(
-            painter = painterResource(R.drawable.nen1),
+            painter = painterResource(id = R.drawable.manhinh),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop // ảnh phủ toàn màn hình
         )
 
+        // Các thành phần UI khác có thể đặt lên trên ảnh
+
         // Welcome text
-        Text(
-            text = "Xin chào, $playerName!",
+        Text(text = "Xin chào, $playerName!",
             color = Color.White,
             fontSize = 20.sp,
             fontStyle = FontStyle.Italic,
@@ -96,6 +98,8 @@ fun MainScreen(
                 .align(Alignment.TopEnd) // căn góc phải trên
                 .padding(end = 16.dp, top = 20.dp) // cách mép phải và trên một chút
         )
+
+
 
         // Top bar UI (Store, Chest, BagCoin) ở góc trên trái
         Column(
@@ -125,7 +129,6 @@ fun MainScreen(
                 }
             )
         }
-
         val rageFont = FontFamily(Font(R.font.rage))
 
         Box(
@@ -141,11 +144,11 @@ fun MainScreen(
                 fontStyle = FontStyle.Italic,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(y = (-70).dp),
+                    .offset(y = (-70).dp), // 👈 dịch chữ lên 50dp
                 color = Color.White,
-            )
-        }
 
+                )
+        }
         // Buttons: Play / Rank / Settings
         Column(
             modifier = Modifier
@@ -161,9 +164,8 @@ fun MainScreen(
                 onClick = { context.startActivity(Intent(context, RankScreenActivity::class.java)) }
             ) { Text("Rank") }
             Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { context.startActivity(Intent(context, SettingScreenActivity::class.java)) }
-            ) { Text("Help") }
+            Button(onClick = { context.startActivity(Intent(context, SettingScreenActivity::class.java)) }
+            ) { Text("Hepl") }
         }
     }
 }
