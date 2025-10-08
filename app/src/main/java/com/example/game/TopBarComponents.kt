@@ -121,8 +121,8 @@ object TopBarComponent {
         }
 
         val itemsForSale = listOf(
-            ChestItem("Pháo ", R.drawable.fireworks) to 2,
-            ChestItem("Pháo sáng", R.drawable.firework2) to 2,
+            ChestItem("Pháo ", R.drawable.fireworks) to 50,
+            ChestItem("Pháo sáng", R.drawable.firework2) to 50,
             ChestItem("Bom", R.drawable.bom1) to 2,
             ChestItem("Khiên", R.drawable.shield1) to 2,
             ChestItem("Tường chắn", R.drawable.wall) to 2,

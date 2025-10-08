@@ -18,10 +18,14 @@ object ChestItemEffectsBase {
         onShieldToggle: (Boolean) -> Unit,
         onWallToggle: (Boolean) -> Unit,
         onTimeToggle: (Boolean) -> Unit,
-        onLevelClear: () -> Unit
+        onLevelClear: () -> Unit,
+        onShowBoomEffect: (Float, Float) -> Unit = { _, _ -> } // Thêm tham số này với default value
     ) {
         when (itemName.trim()) {
-            "Fireworks", "Pháo sáng", "Pháo ", "Pháo" -> applyFireworksEffect(coins, bagCoins, coroutineScope, screenHeightPx, onScoreUpdate, onLevelClear)
+            "Fireworks", "Pháo sáng", "Pháo ", "Pháo" -> applyFireworksEffect(
+                coins, bagCoins, coroutineScope, screenHeightPx, planeX,
+                onScoreUpdate, onLevelClear, onShowBoomEffect
+            )
             "Bom", "Bomb" -> applyBombEffect(monsters, coins, bagCoins, coroutineScope, onScoreUpdate, onLevelClear)
             "Shield", "Khiên" -> applyTimedToggle(coroutineScope, 10_000, onShieldToggle)
             "Wall", "Tường", "Tường chắn" -> applyTimedToggle(coroutineScope, 10_000, onWallToggle)
@@ -35,9 +39,14 @@ object ChestItemEffectsBase {
         bagCoins: SnapshotStateList<BagCoinDisplay>,
         scope: CoroutineScope,
         screenHeightPx: Float,
+        planeX: Float,
         onScoreUpdate: (Int) -> Unit,
-        onLevelClear: () -> Unit
+        onLevelClear: () -> Unit,
+        onShowBoomEffect: (Float, Float) -> Unit
     ) {
+        // Đã tắt hiệu ứng boom khi dùng pháo sáng
+        // onShowBoomEffect(planeX, screenHeightPx / 2)
+
         var count = 0
         coins.forEach {
             if (!it.collected.value && it.y.value in 0f..screenHeightPx) {

@@ -139,11 +139,9 @@ fun Level5Game(
     }
 
     val coins = remember {
-<<<<<<< HEAD
+
         List(5) {
-=======
-        List(6) {
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
+
             BaseCoin(
                 x = Random.nextFloat() * (screenWidthPx - 50f),
                 y = mutableStateOf(-Random.nextInt(100, 600).toFloat()),
@@ -170,11 +168,9 @@ fun Level5Game(
         while (!isGameOver && !isLevelClear) {
             bullets.add(Bullet(planeX + planeWidth / 2f - 15f, planeY))
             SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
-<<<<<<< HEAD
+
             delay(200)
-=======
-            delay(300)
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
+
         }
     }
 

@@ -4,54 +4,35 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
-<<<<<<< HEAD
+
 import androidx.compose.foundation.background
-=======
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-<<<<<<< HEAD
-=======
-import androidx.compose.ui.layout.ContentScale
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-<<<<<<< HEAD
+
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.FlowRowScope
-=======
 
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
 class SettingScreenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-<<<<<<< HEAD
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black)
             ) {
                 // 🔘 Nút thoát
-=======
-            Box(modifier = Modifier.fillMaxSize()) {
-                // Ảnh nền (thêm code bị comment)
-                Image(
-                    painter = painterResource(id = R.drawable.vutru1), // Giả sử dùng ảnh tương tự
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
 
-                // Icon Exit ở góc trên bên phải
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
                 IconButton(
                     onClick = { finish() },
                     modifier = Modifier
@@ -65,7 +46,7 @@ class SettingScreenActivity : ComponentActivity() {
                     )
                 }
 
-<<<<<<< HEAD
+
                 val storeImage = R.drawable.store
                 val chestImage = R.drawable.chest
                 val coinImage = R.drawable.coin
@@ -188,28 +169,10 @@ class SettingScreenActivity : ComponentActivity() {
                         )
                     }
 
-=======
-                // Nội dung chính ở giữa (thêm placeholder)
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Cài Đặt (Placeholder)",
-                        color = Color.White,
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                    // Thêm setting options ở đây
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
+
                 }
             }
         }
     }
-<<<<<<< HEAD
+
 }
-=======
-}
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0

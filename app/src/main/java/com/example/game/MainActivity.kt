@@ -81,7 +81,7 @@ fun MainScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         // Background
         Image(
-            painter = painterResource(R.drawable.manhinh),
+            painter = painterResource(R.drawable.nen1),
             contentDescription = null,
             modifier = Modifier.fillMaxSize()
         )

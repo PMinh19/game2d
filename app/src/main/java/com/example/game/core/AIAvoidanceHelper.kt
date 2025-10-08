@@ -17,7 +17,7 @@ object AIAvoidanceHelper {
 
     // Thời gian cache để tránh tính toán quá nhiều
     private var lastUpdateTime = 0L
-    private const val UPDATE_INTERVAL = 50L // ms - Giảm từ 100ms xuống 50ms để phản ứng nhanh hơn
+    private const val UPDATE_INTERVAL = 50L // ms
 
     /**
      * Initialize the TensorFlow Lite model
@@ -28,13 +28,10 @@ object AIAvoidanceHelper {
             if (model != null) {
                 interpreter = Interpreter(model)
             } else {
-                // Model file not found, continue without AI
                 interpreter = null
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // Fallback: nếu không load được model, sẽ dùng logic đơn giản
-            // Không throw exception, chỉ log lỗi
             interpreter = null
         }
     }
@@ -49,7 +46,7 @@ object AIAvoidanceHelper {
             fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
         } catch (e: Exception) {
             e.printStackTrace()
-            null // Return null if model file not found
+            null
         }
     }
 
@@ -71,40 +68,37 @@ object AIAvoidanceHelper {
         }
         lastUpdateTime = currentTime
 
-        // Find threatening bullets (bullets that are close and moving towards monster)
+        // Find threatening bullets
         val threateningBullets = bullets.filter { bullet ->
-            // Check if bullet is below monster (moving upward toward it)
-            val isBelowMonster = bullet.y > monsterY - 250f // Tăng từ 200f lên 250f để phát hiện sớm hơn
-            // Check if bullet is in horizontal range
-            val isInRange = bullet.x >= monsterX - 120f && bullet.x <= monsterX + monsterSize + 120f // Tăng từ 100f lên 120f
+            val isBelowMonster = bullet.y > monsterY - 250f
+            val isInRange = bullet.x >= monsterX - 120f && bullet.x <= monsterX + monsterSize + 120f
             isBelowMonster && isInRange
         }
 
         if (threateningBullets.isEmpty()) {
-            return Pair(0f, 0f) // No threat, no need to evade
+            return Pair(0f, 0f)
         }
 
-        // Simple AI logic: move away from the closest threatening bullet
+        // Closest threatening bullet
         val closestBullet = threateningBullets.minByOrNull { bullet ->
             val dx = bullet.x - (monsterX + monsterSize / 2f)
             val dy = bullet.y - monsterY
             sqrt(dx * dx + dy * dy)
         } ?: return Pair(0f, 0f)
 
-        // Calculate evasion direction (move perpendicular to bullet trajectory)
         val bulletToMonsterX = (monsterX + monsterSize / 2f) - closestBullet.x
 
-        // Move away from bullet horizontally - Tăng tốc độ né từ 3f lên 6f
+        // Base evasion (horizontal only)
         val evasionX = when {
-            bulletToMonsterX > 0 -> 6f // Move right faster
-            bulletToMonsterX < 0 -> -6f // Move left faster
-            else -> if (Math.random() > 0.5) 6f else -6f // Random if directly aligned
+            bulletToMonsterX > 0 -> 6f  // move right
+            bulletToMonsterX < 0 -> -6f // move left
+            else -> if (Math.random() > 0.5) 6f else -6f
         }
 
-        // Check screen boundaries
+        // --- FIX: rebound logic ---
         val finalEvasionX = when {
-            monsterX + evasionX < 0 -> 6f // Too close to left, move right
-            monsterX + monsterSize + evasionX > screenWidth -> -6f // Too close to right, move left
+            monsterX <= 0f -> 6f // đang chạm trái → bật sang phải
+            monsterX + monsterSize >= screenWidth -> -6f // đang chạm phải → bật sang trái
             else -> evasionX
         }
 
@@ -128,12 +122,11 @@ object AIAvoidanceHelper {
             sqrt(dx * dx + dy * dy)
         } ?: Float.MAX_VALUE
 
-        // Threat is high when bullet is close (within 300px)
         return when {
-            closestDistance < 100f -> 1.0f // Very high threat
-            closestDistance < 200f -> 0.7f // High threat
-            closestDistance < 300f -> 0.4f // Medium threat
-            else -> 0.1f // Low threat
+            closestDistance < 100f -> 1.0f
+            closestDistance < 200f -> 0.7f
+            closestDistance < 300f -> 0.4f
+            else -> 0.1f
         }
     }
 
@@ -147,15 +140,11 @@ object AIAvoidanceHelper {
         bullet: Bullet,
         lookaheadFrames: Int = 10
     ): Boolean {
-        // Simple prediction: check if bullet trajectory will intersect monster
-        val bulletSpeed = 25f // Bullet moves up at -25f per frame
+        val bulletSpeed = 25f
 
         for (frame in 1..lookaheadFrames) {
             val futureY = bullet.y - (bulletSpeed * frame)
-
-            // Check if bullet will be at monster's Y position
             if (futureY <= monsterY + monsterSize && futureY >= monsterY) {
-                // Check horizontal alignment
                 if (bullet.x >= monsterX && bullet.x <= monsterX + monsterSize) {
                     return true
                 }

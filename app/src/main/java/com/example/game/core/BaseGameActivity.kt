@@ -11,6 +11,9 @@ open class BaseGameActivity : ComponentActivity() {
     protected var hitSoundId: Int = 0
     protected var coinSoundId: Int = 0
 
+    // Cờ để track trạng thái Activity (active/paused)
+    private var isActivityActive = true
+
     protected fun initAudio() {
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
@@ -34,19 +37,25 @@ open class BaseGameActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        isActivityActive = false // Đặt cờ = false khi pause
         SoundManager.pauseBackgroundMusic()
     }
 
     override fun onResume() {
         super.onResume()
-        // Only play if background music is enabled
-        if (SoundManager.isBackgroundMusicEnabled.value) {
+        isActivityActive = true // Đặt cờ = true khi resume
+
+        // Chỉ play nhạc khi cả 2 điều kiện:
+        // 1. Activity đang active (cờ = true)
+        // 2. User bật nhạc nền
+        if (isActivityActive && SoundManager.isBackgroundMusicEnabled.value == true) {
             SoundManager.playBackgroundMusic()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        isActivityActive = false // Reset cờ khi destroy
         soundPool.release()
         // Don't release SoundManager here as it's shared across activities
     }

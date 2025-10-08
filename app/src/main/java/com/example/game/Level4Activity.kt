@@ -164,11 +164,9 @@ fun Level4Game(
         while (!isGameOver && !isLevelClear) {
             bullets.add(Bullet(planeX + planeWidth / 2f - 15f, planeY))
             SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
-<<<<<<< HEAD
+
             delay(200)
-=======
-            delay(300)
->>>>>>> ef0bb07ae765123f4629eec8810ab08d56555fb0
+
         }
     }
 
@@ -271,7 +269,7 @@ fun Level4Game(
                                 m.alive.value = false
                                 val index = growingMonsters.indexOf(m)
                                 if (index >= 0) {
-                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(500, 1500)
+                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 6000)
                                 }
                             }
                         }
