@@ -126,7 +126,7 @@ fun Level3Game(
 
     // --- Invisible Monsters ---
     val invisibleMonsters = remember {
-        List(12) {
+        List(6) {
             InvisibleMonster(
                 x = Random.nextFloat() * (screenWidthPx - 100f),
                 y = mutableStateOf(-Random.nextInt(200, 3000).toFloat()),
@@ -138,8 +138,16 @@ fun Level3Game(
         }
     }
 
-    // Track respawn times
-    val monsterRespawnTimes = remember { MutableList(invisibleMonsters.size) { 0L } }
+    // --- Check level clear when all monsters are dead ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            delay(1000) // Check every second
+            val allDead = invisibleMonsters.all { !it.alive.value || it.hp.value <= 0 }
+            if (allDead) {
+                isLevelClear = true
+            }
+        }
+    }
 
     val coins = remember {
         List(6) {
@@ -187,16 +195,6 @@ fun Level3Game(
     invisibleMonsters.forEachIndexed { index, m ->
         LaunchedEffect(m, isGameOver, isLevelClear) {
             while (!isGameOver && !isLevelClear) {
-                // Check if monster needs to respawn
-                if (!m.alive.value && System.currentTimeMillis() >= monsterRespawnTimes[index]) {
-                    m.y.value = -Random.nextInt(200, 1500).toFloat()
-                    m.x = Random.nextFloat() * (screenWidthPx - 100f)
-                    m.hp.value = 100
-                    m.alive.value = true
-                    m.lastToggleTime = System.currentTimeMillis()
-                    m.isVisible.value = Random.nextBoolean() // Random start state
-                }
-
                 if (m.alive.value && m.hp.value > 0 && !timeActive) {
                     // AI-based evasion: monster tries to dodge bullets intelligently
                     val evasion = AIAvoidanceHelper.calculateEvasion(
@@ -242,7 +240,6 @@ fun Level3Game(
                     // If monster passes plane
                     if (m.y.value > planeY + planeHeight / 2f) {
                         if (!shieldActive && !wallActive) planeHp -= 50
-                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
                         m.alive.value = false
                     }
                 }
@@ -282,10 +279,6 @@ fun Level3Game(
                         iter.remove()
                         if (m.hp.value <= 0) {
                             m.alive.value = false
-                            val index = invisibleMonsters.indexOf(m)
-                            if (index >= 0) {
-                                monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
-                            }
                         }
                     }
                 }
@@ -502,7 +495,6 @@ fun Level3Game(
                     m.alive.value = true
                     m.isVisible.value = Random.nextBoolean()
                     m.lastToggleTime = System.currentTimeMillis()
-                    monsterRespawnTimes[index] = 0L
                 }
 
                 coins.forEach { c ->

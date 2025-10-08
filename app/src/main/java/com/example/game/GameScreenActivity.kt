@@ -32,12 +32,10 @@ class GameScreenActivity : BaseGameActivity() {
         super.onCreate(savedInstanceState)
         initAudio()
 
-        // Initialize AI Avoidance Helper for smart bullet dodging
         try {
             AIAvoidanceHelper.init(this)
         } catch (e: Exception) {
             android.util.Log.e("GameScreenActivity", "AI init failed: ${e.message}", e)
-            // Continue without AI - game will still work with basic logic
         }
 
         setContent {
@@ -66,9 +64,6 @@ class GameScreenActivity : BaseGameActivity() {
     }
 }
 
-// Data class cho boom effect (khai báo ngoài hàm Composable)
-data class BoomEffect(val x: Float, val y: Float, val id: Long = System.currentTimeMillis())
-
 @Composable
 fun GameScreen(
     screenWidthPx: Float,
@@ -82,10 +77,9 @@ fun GameScreen(
     val playerName = PrefManager.getPlayerName(context)
     val coroutineScope = rememberCoroutineScope()
 
-    // --- State ---
-    var totalScore by remember { mutableStateOf(0) }
-    var currentSessionScore by remember { mutableStateOf(0) }
-    var planeHp by remember { mutableStateOf(100) } // 0..100
+    var totalScore by remember { mutableIntStateOf(0) }
+    var currentSessionScore by remember { mutableIntStateOf(0) }
+    var planeHp by remember { mutableIntStateOf(100) }
 
     var shieldActive by remember { mutableStateOf(false) }
     var wallActive by remember { mutableStateOf(false) }
@@ -95,7 +89,6 @@ fun GameScreen(
     var isLevelClear by remember { mutableStateOf(false) }
     var showGameEndDialog by remember { mutableStateOf(false) }
 
-    // Show dialog when game ends instead of navigating to new activity
     LaunchedEffect(isGameOver, isLevelClear) {
         if (isGameOver || isLevelClear) {
             delay(500)
@@ -103,18 +96,15 @@ fun GameScreen(
         }
     }
 
-    // --- Plane ---
-    var planeX by remember { mutableStateOf(screenWidthPx / 2 - 50f) }
+    var planeX by remember { mutableFloatStateOf(screenWidthPx / 2 - 50f) }
     val planeY = screenHeightPx - 250f
     val planeWidth = 100f
     val planeHeight = 100f
 
-    // --- Background (2 images loop) ---
     var offsetY by remember { mutableStateOf(0f) }
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             offsetY += 4f
-            // Sử dụng modulo để giữ chuyển động liên tục
             if (offsetY >= screenHeightPx) {
                 offsetY %= screenHeightPx
             }
@@ -122,31 +112,22 @@ fun GameScreen(
         }
     }
 
-    // --- Entities ---
     val monsters = remember {
-
         List(8) {
             BaseMonster(
                 x = Random.nextFloat() * (screenWidthPx - 120f),
                 y = mutableStateOf(-Random.nextInt(200, 2000).toFloat()),
-
                 speed = Random.nextFloat() * 1.5f + 1.5f,
                 hp = mutableStateOf(100)
             )
         }
     }
 
-
-
-    // Track respawn times for each monster
-    val monsterRespawnTimes = remember { MutableList(monsters.size) { 0L } }
     val coins = remember { mutableStateListOf<BaseCoin>() }
     val bullets = remember { mutableStateListOf<Bullet>() }
     val bagCoins = remember { mutableStateListOf<BagCoinDisplay>() }
-
     var chestItems by remember { mutableStateOf<List<ChestItem>>(emptyList()) }
 
-    // --- Load player data (score / chest) ---
     LaunchedEffect(Unit) {
         if (!playerName.isNullOrBlank()) {
             FirebaseHelper.syncNewPlayer(playerName)
@@ -155,14 +136,12 @@ fun GameScreen(
         }
     }
 
-    // --- Shooting ---
+    // Shooting
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             bullets.add(Bullet(planeX + planeWidth / 2f - 15f, planeY))
             SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
-
             delay(200)
-
         }
     }
 
@@ -174,23 +153,13 @@ fun GameScreen(
         }
     }
 
-    // --- Monster movement ---
+    // ✅ MONSTER MOVEMENT - NO RESPAWN VERSION
     monsters.forEachIndexed { index, m ->
         LaunchedEffect(m, isGameOver, isLevelClear) {
             while (!isGameOver && !isLevelClear) {
-                // Check if monster needs to respawn after death
-                if (!m.alive.value && System.currentTimeMillis() >= monsterRespawnTimes[index]) {
-                    // Respawn the monster at a random position
-                    m.y.value = -Random.nextInt(200, 1500).toFloat()
-
-                    m.x = Random.nextFloat() * (screenWidthPx - 120f)
-
-                    m.hp.value = 100
-                    m.alive.value = true
-                }
-
+                // Only process alive monsters
                 if (m.alive.value && m.hp.value > 0 && !timeActive) {
-                    // AI-based evasion: monster tries to dodge bullets intelligently
+                    // AI-based evasion
                     val evasion = AIAvoidanceHelper.calculateEvasion(
                         monsterX = m.x,
                         monsterY = m.y.value,
@@ -199,24 +168,20 @@ fun GameScreen(
                         screenWidth = screenWidthPx
                     )
 
-                    // Apply evasion movement (horizontal dodge)
                     m.x = (m.x + evasion.first).coerceIn(0f, screenWidthPx - 100f)
 
-                    // Wall is at planeY - 60f, so stop monsters closer to actually touch it
                     val wallTop = planeY - 60f
-                    val monsterBottom = m.y.value + 80f // Monster height is 80px
+                    val monsterBottom = m.y.value + 80f
 
                     if (wallActive && monsterBottom >= wallTop) {
+                        // Stopped by wall
                     } else {
-                        // Normal movement
                         m.y.value += m.speed
                     }
 
-                    // If monster falls below plane (passed), damage plane and respawn
+                    // Monster fell below plane - just die, no respawn
                     if (m.y.value > planeY + planeHeight / 2f) {
                         if (!shieldActive && !wallActive) planeHp -= 50
-                        // Schedule respawn with random delay (3-8 seconds)
-                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
                         m.alive.value = false
                     }
                 }
@@ -225,10 +190,9 @@ fun GameScreen(
         }
     }
 
-
+    // Coin spawning
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
-            // Tạo 1 coin mới duy nhất
             if (coins.size < 10) {
                 coins.add(
                     BaseCoin(
@@ -242,76 +206,50 @@ fun GameScreen(
         }
     }
 
-// --- Cập nhật vị trí coin ---
+    // Coin movement
     coins.forEach { c ->
         LaunchedEffect(c, isGameOver, isLevelClear) {
             while (!isGameOver && !isLevelClear) {
                 if (!c.collected.value) {
                     c.y.value += c.speed
                 }
-                // Nếu coin bị nhặt hoặc rơi khỏi màn hình => xóa khỏi danh sách
                 if (c.collected.value || c.y.value > screenHeightPx + 80f) {
                     coins.remove(c)
                     break
                 }
-
                 delay(32L)
-
             }
         }
     }
 
-
-
-// --- Vòng spawn coin vô tận ---
-    LaunchedEffect(isGameOver, isLevelClear) {
-        while (!isGameOver && !isLevelClear) {
-            delay(2000L) // spawn mỗi 2 giây
-
-            if (coins.size < 10) { // Giới hạn tối đa 10 coin trên màn hình
-                coins.add(
-                    BaseCoin(
-                        x = Random.nextFloat() * (screenWidthPx - 50f),
-                        y = mutableStateOf(-100f),
-                        speed = Random.nextFloat() * 2f + 2f
-                    )
-                )
-            }
-        }
-    }
-
-
-
-    // --- Bullet vs Monster collision ---
+    // ✅ BULLET-MONSTER COLLISION - NO RESPAWN VERSION
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             val iter = bullets.iterator()
             while (iter.hasNext()) {
                 val b = iter.next()
+                var bulletHit = false
                 monsters.forEach { m ->
-                    if (CollisionUtils.checkCollisionBulletMonster(b, m)) {
+                    if (!bulletHit && m.alive.value && CollisionUtils.checkCollisionBulletMonster(b, m)) {
                         m.hp.value -= 50
                         SoundManager.playSoundEffect(soundPool, hitSoundId, 0.3f)
-                        iter.remove()
+                        bulletHit = true
 
                         if (m.hp.value <= 0) {
                             m.alive.value = false
-                            // Đã tắt hiệu ứng boom khi quái chết
-                            // Không thêm BoomEffect nữa
-                            // Schedule respawn with random delay (3-8 seconds)
-                            val index = monsters.indexOf(m)
-                            if (index >= 0) {
-                                monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 8000)
-                            }
+                            // NO RESPAWN SCHEDULING!
                         }
                     }
+                }
+                if (bulletHit) {
+                    iter.remove()
                 }
             }
             delay(16)
         }
     }
 
-    // --- Plane - Coin collision (collect coin) ---
+    // Plane-Coin collision
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             coins.forEach { c ->
@@ -319,10 +257,8 @@ fun GameScreen(
                     c.collected.value = true
                     totalScore += 1
                     currentSessionScore += 1
-                    // add bag coin display (will be animated in UI)
                     val bag = BagCoinDisplay(c.x, c.y.value, 1)
                     bagCoins.add(bag)
-                    // update backend
                     if (!playerName.isNullOrBlank()) FirebaseHelper.updateScore(playerName, totalScore)
                 }
             }
@@ -330,7 +266,7 @@ fun GameScreen(
         }
     }
 
-    // --- Plane - Monster collision (direct hit) ---
+    // Plane-Monster collision
     LaunchedEffect(isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             monsters.forEach { m ->
@@ -338,7 +274,6 @@ fun GameScreen(
                     CollisionUtils.checkCollisionPlaneMonster(planeX, planeY, planeWidth, planeHeight, m)
                 ) {
                     if (!shieldActive && !wallActive) planeHp -= 50
-                    // kill this monster
                     m.hp.value = 0
                     m.alive.value = false
                 }
@@ -348,7 +283,19 @@ fun GameScreen(
         }
     }
 
-    // --- Wall - Monster collision (wall damages monsters) ---
+    // ✅ LEVEL CLEAR CHECK - KẾT THÚC KHI HẾT MONSTER
+    LaunchedEffect(Unit) {
+        while (!isGameOver && !isLevelClear) {
+            val aliveCount = monsters.count { it.alive.value }
+            if (aliveCount == 0) {
+                delay(1000) // Đợi 1 giây để animation kết thúc
+                isLevelClear = true
+            }
+            delay(500) // Kiểm tra mỗi 0.5 giây
+        }
+    }
+
+    // Wall-Monster collision
     LaunchedEffect(wallActive, isGameOver, isLevelClear) {
         while (!isGameOver && !isLevelClear) {
             if (wallActive) {
@@ -356,8 +303,7 @@ fun GameScreen(
                     if (m.alive.value && m.hp.value > 0) {
                         val isColliding = CollisionUtils.checkCollisionWallMonster(planeY, m)
                         if (isColliding) {
-                            // Wall drains monster HP continuously
-                            m.hp.value -= 2 // Drain 2 HP per tick
+                            m.hp.value -= 2
                             if (m.hp.value <= 0) {
                                 m.alive.value = false
                             }
@@ -365,11 +311,10 @@ fun GameScreen(
                     }
                 }
             }
-            delay(50) // Check every 50ms
+            delay(50)
         }
     }
 
-    // --- Use chest item wrapper ---
     fun useChestItem(item: ChestItem) {
         ChestItemEffectsBase.applyItemEffect(
             itemName = item.name,
@@ -388,16 +333,12 @@ fun GameScreen(
             onWallToggle = { active -> wallActive = active },
             onTimeToggle = { active -> timeActive = active },
             onLevelClear = { isLevelClear = true },
-            onShowBoomEffect = { x, y ->
-                // Đã tắt hiệu ứng boom khi dùng vật phẩm
-                // Không thêm BoomEffect nữa
-            }
+            onShowBoomEffect = { x, y -> }
         )
         chestItems = chestItems - item
         if (!playerName.isNullOrBlank()) FirebaseHelper.updateChest(playerName, chestItems)
     }
 
-    // --- Drag plane ---
     val dragModifier = Modifier.pointerInput(Unit) {
         detectDragGestures { change, dragAmount ->
             planeX = (planeX + dragAmount.x).coerceIn(0f, screenWidthPx - planeWidth)
@@ -405,96 +346,55 @@ fun GameScreen(
         }
     }
 
-    // --- UI ---
     Box(modifier = Modifier.fillMaxSize()) {
-        // Background layer - separate from drag gestures
         Box(modifier = Modifier.fillMaxSize()) {
-            // Hình nền chính
             Image(
-
                 painter = painterResource(R.drawable.lv1),
-
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, offsetY.roundToInt()) },
+                modifier = Modifier.fillMaxSize().offset { IntOffset(0, offsetY.roundToInt()) },
                 contentScale = ContentScale.Crop
             )
-            // Hình nền phụ để tạo hiệu ứng lặp
             Image(
-
                 painter = painterResource(R.drawable.lv1),
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, (offsetY - screenHeightPx+2).roundToInt()) },
-
+                modifier = Modifier.fillMaxSize().offset { IntOffset(0, (offsetY - screenHeightPx + 2).roundToInt()) },
                 contentScale = ContentScale.Crop
             )
         }
 
-        // Game content with drag gesture
         Box(modifier = Modifier.fillMaxSize().then(dragModifier)) {
-            // --- Monsters (using MonsterUI component) ---
             monsters.forEach { m ->
                 MonsterUI(monster = m)
             }
 
-            // --- Coins ---
             coins.filter { !it.collected.value }.forEach { c ->
                 Image(
                     painter = painterResource(R.drawable.coin),
                     contentDescription = null,
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }
-                        .size(40.dp)
+                    modifier = Modifier.absoluteOffset { IntOffset(c.x.roundToInt(), c.y.value.roundToInt()) }.size(40.dp)
                 )
             }
 
-            // --- BagCoin animated views (spawned when coin collected) ---
             bagCoins.toList().forEach { bag ->
                 BagCoinAnimatedView(bag = bag, onFinished = { finishedBag ->
                     bagCoins.remove(finishedBag)
                 })
             }
 
-            // --- Bullets ---
             bullets.forEach { b ->
                 Image(
                     painter = painterResource(R.drawable.dan2),
                     contentDescription = null,
-                    modifier = Modifier
-                        .absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }
-                        .size(30.dp)
+                    modifier = Modifier.absoluteOffset { IntOffset(b.x.roundToInt(), b.y.roundToInt()) }.size(30.dp)
                 )
             }
 
-            // --- Boom Effects (hiển thị khi dùng Pháo/Pháo sáng) ---
-            // Đã tắt vẽ hiệu ứng boom
-            // boomEffects.forEach { boom ->
-            //     Image(
-            //         painter = painterResource(R.drawable.boom),
-            //         contentDescription = "Boom Effect",
-            //         modifier = Modifier
-            //             .absoluteOffset { IntOffset((boom.x - 60f).roundToInt(), (boom.y - 60f).roundToInt()) }
-            //             .size(120.dp)
-            //     )
-            // }
+            PlaneUI(planeX = planeX, planeY = planeY, planeHp = planeHp, shieldActive = shieldActive)
 
-            // --- Plane (using PlaneUI component) ---
-            PlaneUI(
-                planeX = planeX,
-                planeY = planeY,
-                planeHp = planeHp,
-                shieldActive = shieldActive
-            )
-
-            // --- Wall effect (using WallUI component) ---
             if (wallActive) {
                 WallUI(planeY = planeY)
             }
 
-            // --- Top bar with chest items and score ---
             TopBarUI(
                 bagCoinScore = totalScore,
                 chestItems = chestItems,
@@ -511,45 +411,32 @@ fun GameScreen(
                 onUseChestItem = { useChestItem(it) }
             )
 
-            // --- Sound Control Button (top-right corner) ---
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.TopEnd
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
                 SoundControlButton()
             }
         }
     }
 
-    // --- Game End Dialog ---
     if (showGameEndDialog) {
         GameEndDialog(
             isWin = isLevelClear,
             score = currentSessionScore,
             level = 1,
-            onDismiss = {
-                showGameEndDialog = false
-            },
+            onDismiss = { showGameEndDialog = false },
             onReplay = {
-                // Reset game state to replay
                 showGameEndDialog = false
                 isGameOver = false
                 isLevelClear = false
                 planeHp = 100
                 currentSessionScore = 0
 
-                // Reset monsters
                 monsters.forEachIndexed { index, m ->
                     m.x = Random.nextFloat() * (screenWidthPx - 100f)
                     m.y.value = -Random.nextInt(200, 2000).toFloat()
                     m.hp.value = 100
                     m.alive.value = true
-                    monsterRespawnTimes[index] = 0L
                 }
 
-                // Reset coins
                 coins.forEach { c ->
                     c.collected.value = false
                     c.y.value = -Random.nextInt(100, 600).toFloat()
@@ -558,16 +445,8 @@ fun GameScreen(
 
                 bullets.clear()
             },
-            onNextLevel = {
-
-                onExit() // Close this activity
-            },
-            onExit = {
-                // Back to main menu
-                onExit()
-
-            }
-
+            onNextLevel = { onExit() },
+            onExit = { onExit() }
         )
     }
 }

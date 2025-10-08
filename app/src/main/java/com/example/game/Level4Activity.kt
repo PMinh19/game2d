@@ -120,21 +120,29 @@ fun Level4Game(
 
     // --- Growing Monsters ---
     val growingMonsters = remember {
-        List(10) {
+        List(5) {
             GrowingMonster(
                 x = Random.nextFloat() * (screenWidthPx - 200f) + 100f,
                 y = mutableStateOf(-Random.nextInt(200, 1500).toFloat()),
                 speed = Random.nextFloat() * 1.2f + 1.0f,
-                hp = mutableStateOf(80),  // Tăng HP lên 80
-                initialSize = 80f,  // Tăng kích thước ban đầu từ 60f lên 80f
-                maxSize = 500f,  // Tăng kích thước tối đa từ 200f lên 500f
-                growthRate = 0.5f  // Tăng tốc độ lớn từ 0.3f lên 0.5f
+                hp = mutableStateOf(80),
+                initialSize = 80f,
+                maxSize = 500f,
+                growthRate = 0.5f
             )
         }
     }
 
-    // Track respawn times
-    val monsterRespawnTimes = remember { MutableList(growingMonsters.size) { 0L } }
+    // --- Check level clear when all monsters are dead ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            delay(1000) // Check every second
+            val allDead = growingMonsters.all { !it.alive.value || it.hp.value <= 0 }
+            if (allDead) {
+                isLevelClear = true
+            }
+        }
+    }
 
     val coins = remember {
         List(6) {
@@ -183,18 +191,7 @@ fun Level4Game(
     growingMonsters.forEachIndexed { index, m ->
         LaunchedEffect(m, isGameOver, isLevelClear) {
             while (!isGameOver && !isLevelClear) {
-                // Check if monster needs to respawn
-                if (!m.alive.value && System.currentTimeMillis() >= monsterRespawnTimes[index]) {
-                    m.y.value = -Random.nextInt(200, 1500).toFloat()
-                    m.x = Random.nextFloat() * (screenWidthPx - 200f) + 100f
-                    m.hp.value = 80  // Sửa từ 50 thành 80 để khớp với initialSize mới
-                    m.maxHp = 80
-                    m.currentMaxHp.value = 80
-                    m.currentSize.value = m.initialSize
-                    m.alive.value = true
-                }
-
-                if (m.alive.value && !timeActive) {  // Thêm điều kiện !timeActive để grow khi không bị time stop
+                if (m.alive.value && !timeActive) {
                     // AI-based evasion: monster tries to dodge bullets intelligently
                     val evasion = AIAvoidanceHelper.calculateEvasion(
                         monsterX = m.x,
@@ -228,7 +225,6 @@ fun Level4Game(
                             val damage = (30 * (m.currentSize.value / m.initialSize)).toInt()
                             planeHp -= damage
                         }
-                        monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(500, 1500)  // Giảm thời gian respawn từ 1000-2500 xuống 500-1500
                         m.alive.value = false
                     }
                 }
@@ -267,10 +263,6 @@ fun Level4Game(
                             shouldRemove = true
                             if (m.hp.value <= 0) {
                                 m.alive.value = false
-                                val index = growingMonsters.indexOf(m)
-                                if (index >= 0) {
-                                    monsterRespawnTimes[index] = System.currentTimeMillis() + Random.nextLong(3000, 6000)
-                                }
                             }
                         }
                     }
@@ -376,7 +368,6 @@ fun Level4Game(
     Box(modifier = Modifier.fillMaxSize()) {
         // Background layer - separate from drag gestures
         Box(modifier = Modifier.fillMaxSize()) {
-            // Hình nền chính
             Image(
                 painter = painterResource(R.drawable.nen4),
                 contentDescription = null,
@@ -385,7 +376,6 @@ fun Level4Game(
                     .offset { IntOffset(0, offsetY.roundToInt()) },
                 contentScale = ContentScale.Crop
             )
-            // Hình nền phụ để tạo hiệu ứng lặp
             Image(
                 painter = painterResource(R.drawable.nen4),
                 contentDescription = null,
@@ -500,7 +490,6 @@ fun Level4Game(
                     m.currentMaxHp.value = 80
                     m.currentSize.value = m.initialSize
                     m.alive.value = true
-                    monsterRespawnTimes[index] = 0L
                 }
 
                 coins.forEach { c ->

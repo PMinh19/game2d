@@ -124,7 +124,7 @@ fun Level5Game(
 
     // Initialize with some parent monsters
     LaunchedEffect(Unit) {
-        repeat(8) {
+        repeat(5) {
             splittingMonsters.add(
                 SplittingMonster(
                     x = Random.nextFloat() * (screenWidthPx - 80f),
@@ -138,10 +138,19 @@ fun Level5Game(
         }
     }
 
+    // --- Check level clear when all monsters are dead ---
+    LaunchedEffect(isGameOver, isLevelClear) {
+        while (!isGameOver && !isLevelClear) {
+            delay(1000) // Check every second
+            val allDead = splittingMonsters.all { !it.alive.value || it.hp.value <= 0 }
+            if (allDead && splittingMonsters.isNotEmpty()) {
+                isLevelClear = true
+            }
+        }
+    }
+
     val coins = remember {
-
         List(5) {
-
             BaseCoin(
                 x = Random.nextFloat() * (screenWidthPx - 50f),
                 y = mutableStateOf(-Random.nextInt(100, 600).toFloat()),
@@ -168,9 +177,7 @@ fun Level5Game(
         while (!isGameOver && !isLevelClear) {
             bullets.add(Bullet(planeX + planeWidth / 2f - 15f, planeY))
             SoundManager.playSoundEffect(soundPool, shootSoundId, 0.5f)
-
             delay(200)
-
         }
     }
 

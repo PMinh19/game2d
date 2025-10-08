@@ -4,13 +4,28 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import kotlin.random.Random
 
+/**
+ * Interface chung cho tất cả các loại monster
+ */
+interface IMonster {
+    var x: Float
+    val y: MutableState<Float>
+    val alive: MutableState<Boolean>
+    val hp: MutableState<Int>
+
+    // ✅ Abstract function - mỗi class tự implement
+    fun getCurrentSize(): Float
+}
+
 open class BaseMonster(
-    var x: Float,
-    var y: MutableState<Float>,
+    override var x: Float,
+    override var y: MutableState<Float>,
     var speed: Float,
-    var hp: MutableState<Int>,
-    var alive: MutableState<Boolean> = mutableStateOf(true)
-)
+    override var hp: MutableState<Int>,
+    override var alive: MutableState<Boolean> = mutableStateOf(true)
+) : IMonster {
+    override fun getCurrentSize(): Float = 100f
+}
 
 open class BaseCoin(
     var x: Float,
@@ -28,7 +43,7 @@ data class BagCoinDisplay(
 data class Bullet(var x: Float, var y: Float)
 
 /**
- * Invisible Monster - can toggle between visible and invisible states
+ * Invisible Monster
  */
 class InvisibleMonster(
     x: Float,
@@ -41,13 +56,14 @@ class InvisibleMonster(
     var isVisible = mutableStateOf(true)
     var lastToggleTime = System.currentTimeMillis()
 
-    // Zigzag movement properties
-    var horizontalSpeed = Random.nextFloat() * 3f + 2f // Tốc độ di chuyển ngang
-    var direction = if (Random.nextBoolean()) 1 else -1 // Hướng di chuyển: 1 = phải, -1 = trái
+    var horizontalSpeed = Random.nextFloat() * 3f + 2f
+    var direction = if (Random.nextBoolean()) 1 else -1
+
+    override fun getCurrentSize(): Float = 100f
 }
 
 /**
- * Growing Monster - grows in size and HP over time
+ * Growing Monster
  */
 class GrowingMonster(
     x: Float,
@@ -56,39 +72,34 @@ class GrowingMonster(
     hp: MutableState<Int>,
     val initialSize: Float = 60f,
     val maxSize: Float = 150f,
-    val growthRate: Float = 0.5f // Pixels per frame
+    val growthRate: Float = 0.5f
 ) : BaseMonster(x, y, speed, hp) {
     var currentSize = mutableStateOf(initialSize)
-    var maxHp = hp.value // Track original max HP
-    var currentMaxHp = mutableStateOf(hp.value) // Track current max HP based on size
+    var maxHp = hp.value
+    var currentMaxHp = mutableStateOf(hp.value)
     val growthDuration = ((maxSize - initialSize) / growthRate).toLong()
 
-    // Growth increases both size and HP proportionally
     fun grow() {
         if (currentSize.value < maxSize) {
             val oldSize = currentSize.value
             currentSize.value = (currentSize.value + growthRate).coerceAtMost(maxSize)
 
-            // Only increase HP when size increases (not every frame)
             if (currentSize.value > oldSize) {
                 val sizeRatio = currentSize.value / initialSize
                 val newMaxHp = (maxHp * sizeRatio).toInt()
-
-                // Only increase current HP if it wasn't damaged
-                // Calculate HP percentage before growth
                 val hpPercentage = hp.value.toFloat() / currentMaxHp.value.toFloat()
                 currentMaxHp.value = newMaxHp
-
-                // Maintain HP percentage after growth (damaged monsters stay damaged)
                 hp.value = (newMaxHp * hpPercentage).toInt().coerceAtLeast(1)
             }
         }
     }
+
+    // ✅ Return snapshot value
+    override fun getCurrentSize(): Float = currentSize.value
 }
 
 /**
- * Splitting Monster - splits into 2-3 smaller monsters when killed
- * Movement: zigzag or bounce off screen edges
+ * Splitting Monster
  */
 class SplittingMonster(
     x: Float,
@@ -96,20 +107,15 @@ class SplittingMonster(
     speed: Float,
     hp: MutableState<Int>,
     val size: Float = 80f,
-    val generation: Int = 1 // Thế hệ: 1 = lớn, 2 = vừa, 3 = nhỏ
+    val generation: Int = 1
 ) : BaseMonster(x, y, speed, hp) {
-    // Movement type: true = zigzag, false = bounce
     var isZigzagMovement = Random.nextBoolean()
-
-    // For zigzag movement
     var horizontalSpeed = Random.nextFloat() * 3f + 2f
     var direction = if (Random.nextBoolean()) 1 else -1
-
-    // For bounce movement
     var velocityX = (Random.nextFloat() * 4f - 2f).coerceIn(-3f, 3f)
     var velocityY = Random.nextFloat() * 2f + 1f
+    var canSplit: Boolean = generation < 3
+    var hasSpawned = mutableStateOf(false)
 
-    // Can split when dies
-    var canSplit: Boolean = generation < 3 // Chỉ split tối đa 2 lần
-    var hasSpawned = mutableStateOf(false) // Đánh dấu đã spawn con chưa
+    override fun getCurrentSize(): Float = size
 }
