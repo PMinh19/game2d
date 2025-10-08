@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "128237042669",
+    "project_id": "game2-af107",
+    "storage_bucket": "game2-af107.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:128237042669:android:d5d5d137bb56c857c885e4",
+        "android_client_info": {
+          "package_name": "com.example.game"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHHgbUdpzTSh3jpS95QyZF8wTEz3WncgI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
