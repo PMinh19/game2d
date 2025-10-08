@@ -2,6 +2,7 @@ package com.example.game
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,27 +23,44 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        FirebaseHelper.syncAllPlayers()
+        try {
+            FirebaseHelper.syncAllPlayers()
 
-        val playerName = intent.getStringExtra("PLAYER_NAME")
-            ?: PrefManager.getPlayerName(this)
-            ?: "Người chơi"
+            // Debug: Log all sources of player name
+            val nameFromIntent = intent.getStringExtra("PLAYER_NAME")
+            val nameFromPrefs = PrefManager.getPlayerName(this)
 
-        FirebaseHelper.syncNewPlayer(playerName)
+            Log.d("MainActivity", "Name from Intent: $nameFromIntent")
+            Log.d("MainActivity", "Name from SharedPreferences: $nameFromPrefs")
 
-        setContent {
-            MaterialTheme {
-                var showLevelScreen by remember { mutableStateOf(false) }
+            val playerName = nameFromIntent ?: nameFromPrefs ?: "Người chơi"
 
-                if (showLevelScreen) {
-                    LevelPathScreen(onExit = {
-                        showLevelScreen = false
-                    })
-                } else {
-                    MainScreen(
-                        playerName = playerName,
-                        onPlayClicked = { showLevelScreen = true }
-                    )
+            Log.d("MainActivity", "Final playerName used: $playerName")
+
+            FirebaseHelper.syncNewPlayer(playerName)
+
+            setContent {
+                MaterialTheme {
+                    var showLevelScreen by remember { mutableStateOf(false) }
+
+                    if (showLevelScreen) {
+                        LevelPathScreen(onExit = {
+                            showLevelScreen = false
+                        })
+                    } else {
+                        MainScreen(
+                            playerName = playerName,
+                            onPlayClicked = { showLevelScreen = true }
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "onCreate failed", e)
+            // Fallback UI
+            setContent {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Error loading app", color = androidx.compose.ui.graphics.Color.White)
                 }
             }
         }

@@ -15,6 +15,32 @@
         android:theme="@style/Theme.Game"
         tools:targetApi="31">
 
+        <!-- Splash Activity (LAUNCHER - Màn hình khởi động đầu tiên) -->
+        <activity
+            android:name=".SplashActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Game">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Name Input Activity (Màn hình nhập tên) -->
+        <activity
+            android:name=".NameInputActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Game" />
+
+        <!-- Main Activity (Màn hình chính) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Game" />
+
         <!-- Game Screen Activity -->
         <activity
             android:name=".GameScreenActivity"
@@ -50,17 +76,6 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Game" />
 
-        <!-- Main Activity -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.Game">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
         <activity android:name=".Top6Activity" />
         <activity android:name=".RankScreenActivity" />
         <activity android:name=".SettingScreenActivity" />

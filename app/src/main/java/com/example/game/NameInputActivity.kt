@@ -89,9 +89,17 @@ class NameInputActivity : ComponentActivity() {
                     Button(
                         onClick = {
                             if (playerName.value.isNotBlank()) {
-                                val name = playerName.value
+                                val name = playerName.value.trim()
+
+                                // LƯU TÊN VÀO SHAREDPREFERENCES NGAY LẬP TỨC
+                                Log.d("NameInputActivity", "Saving player name: $name")
                                 PrefManager.savePlayerName(this@NameInputActivity, name)
 
+                                // Verify it was saved
+                                val savedName = PrefManager.getPlayerName(this@NameInputActivity)
+                                Log.d("NameInputActivity", "Verified saved name: $savedName")
+
+                                // Lưu vào Firebase
                                 val db = FirebaseFirestore.getInstance()
                                 val playerData = hashMapOf(
                                     "name" to name,
@@ -101,15 +109,17 @@ class NameInputActivity : ComponentActivity() {
                                 db.collection("rankings")
                                     .add(playerData)
                                     .addOnSuccessListener { documentReference ->
-                                        Log.d("Firebase", "Người chơi được lưu: ${documentReference.id}")
+                                        Log.d("NameInputActivity", "Player saved to Firebase: ${documentReference.id}")
                                         PrefManager.savePlayerDocId(this@NameInputActivity, documentReference.id)
                                     }
                                     .addOnFailureListener { e ->
-                                        Log.w("Firebase", "Lỗi khi lưu người chơi", e)
+                                        Log.w("NameInputActivity", "Error saving player to Firebase", e)
                                     }
 
+                                // Chuyển sang MainActivity VỚI TÊN
                                 val intent = Intent(this@NameInputActivity, MainActivity::class.java)
                                 intent.putExtra("PLAYER_NAME", name)
+                                Log.d("NameInputActivity", "Starting MainActivity with name: $name")
                                 startActivity(intent)
                                 finish()
                             }

@@ -566,7 +566,9 @@ fun Level5Game(
             },
             onExit = {
                 onExit()
-            }
+            },
+            playerName = playerName,
+            totalScore = totalScore
         )
     }
 }

@@ -506,7 +506,9 @@ fun GameScreen(
             onExit = {
                 // Back to main menu
                 onExit()
-            }
+            },
+            playerName = playerName,
+            totalScore = totalScore
         )
     }
 }

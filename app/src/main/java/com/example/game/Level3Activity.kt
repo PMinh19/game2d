@@ -516,7 +516,9 @@ fun Level3Game(
             },
             onExit = {
                 onExit()
-            }
+            },
+            playerName = playerName,
+            totalScore = totalScore
         )
     }
 }

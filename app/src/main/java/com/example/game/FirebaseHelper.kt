@@ -91,6 +91,7 @@ object FirebaseHelper {
             }
     }
 
+    // CẬP NHẬT ĐIỂM TRONG KHI CHƠI (không lưu vào history)
     fun updateScore(playerName: String, score: Int) {
         db.collection("rankings")
             .whereEqualTo("name", playerName)
@@ -98,27 +99,63 @@ object FirebaseHelper {
             .addOnSuccessListener { docs ->
                 if (!docs.isEmpty) {
                     val docId = docs.documents[0].id
-                    val currentHistory = docs.documents[0].get("scoreHistory") as? List<Map<String, Any>> ?: emptyList()
-                    val newScoreEntry = mapOf(
-                        "score" to score,
-                        "timestamp" to Date().time
-                    )
-                    val updatedHistory = currentHistory + newScoreEntry
+                    // CHỈ cập nhật điểm hiện tại, KHÔNG lưu vào scoreHistory
                     db.collection("rankings").document(docId)
-                        .update(
-                            mapOf(
-                                "score" to score,
-                                "scoreHistory" to updatedHistory
-                            )
-                        )
+                        .update("score", score)
                 } else {
+                    // Nếu player chưa tồn tại, tạo mới
                     val data = hashMapOf(
                         "name" to playerName,
                         "score" to score,
                         "chest" to emptyList<Map<String, Any>>(),
+                        "scoreHistory" to emptyList<Map<String, Any>>()
+                    )
+                    db.collection("rankings").add(data)
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.w("FirebaseHelper", "updateScore failed", e)
+            }
+    }
+
+    // LƯU ĐIỂM CUỐI TRẬN vào history (chỉ gọi khi kết thúc trận)
+    fun saveMatchScore(playerName: String, finalScore: Int) {
+        if (finalScore <= 0) return // Không lưu nếu điểm = 0
+
+        db.collection("rankings")
+            .whereEqualTo("name", playerName)
+            .get()
+            .addOnSuccessListener { docs ->
+                if (!docs.isEmpty) {
+                    val docId = docs.documents[0].id
+                    val currentHistory = docs.documents[0].get("scoreHistory") as? List<Map<String, Any>> ?: emptyList()
+
+                    // Thêm điểm cuối trận vào lịch sử
+                    val newScoreEntry = mapOf(
+                        "score" to finalScore,
+                        "timestamp" to Date().time
+                    )
+                    val updatedHistory = currentHistory + newScoreEntry
+
+                    db.collection("rankings").document(docId)
+                        .update(
+                            mapOf(
+                                "score" to finalScore,
+                                "scoreHistory" to updatedHistory
+                            )
+                        )
+                        .addOnSuccessListener {
+                            Log.d("FirebaseHelper", "Match score saved: $finalScore")
+                        }
+                } else {
+                    // Nếu player chưa tồn tại, tạo mới với điểm này
+                    val data = hashMapOf(
+                        "name" to playerName,
+                        "score" to finalScore,
+                        "chest" to emptyList<Map<String, Any>>(),
                         "scoreHistory" to listOf(
                             mapOf(
-                                "score" to score,
+                                "score" to finalScore,
                                 "timestamp" to Date().time
                             )
                         )
@@ -127,7 +164,7 @@ object FirebaseHelper {
                 }
             }
             .addOnFailureListener { e ->
-                Log.w("FirebaseHelper", "updateScore failed", e)
+                Log.w("FirebaseHelper", "saveMatchScore failed", e)
             }
     }
 

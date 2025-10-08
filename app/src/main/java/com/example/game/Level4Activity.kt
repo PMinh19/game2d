@@ -514,7 +514,9 @@ fun Level4Game(
             },
             onExit = {
                 onExit()
-            }
+            },
+            playerName = playerName,
+            totalScore = totalScore
         )
     }
 }

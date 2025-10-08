@@ -77,9 +77,18 @@ fun GameEndDialog(
     onDismiss: () -> Unit,
     onReplay: () -> Unit,
     onNextLevel: () -> Unit,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    playerName: String? = null,
+    totalScore: Int = 0
 ) {
     val context = LocalContext.current
+
+    // LƯU ĐIỂM CUỐI TRẬN vào Firebase (chỉ một lần khi dialog hiển thị)
+    LaunchedEffect(Unit) {
+        if (!playerName.isNullOrBlank() && totalScore > 0) {
+            com.example.game.FirebaseHelper.saveMatchScore(playerName, totalScore)
+        }
+    }
 
     Dialog(
         onDismissRequest = { /* Prevent dismissing by clicking outside */ },

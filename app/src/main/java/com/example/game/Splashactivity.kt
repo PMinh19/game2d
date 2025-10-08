@@ -2,6 +2,7 @@ package com.example.game
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.Animatable
@@ -65,11 +66,15 @@ class SplashActivity : ComponentActivity() {
             delay(2500)
 
             val savedName = PrefManager.getPlayerName(this@SplashActivity)
+            Log.d("SplashActivity", "Saved name from SharedPreferences: $savedName")
+
             if (savedName.isNullOrBlank()) {
                 // Nếu chưa có tên → sang màn nhập
+                Log.d("SplashActivity", "No saved name, going to NameInputActivity")
                 startActivity(Intent(this@SplashActivity, NameInputActivity::class.java))
             } else {
-                // Nếu đã có tên → sang Main luôn
+                // Nếu đã có tên → sang Main luôn VỚI TÊN
+                Log.d("SplashActivity", "Found saved name: $savedName, going to MainActivity")
                 val intent = Intent(this@SplashActivity, MainActivity::class.java)
                 intent.putExtra("PLAYER_NAME", savedName)
                 startActivity(intent)
