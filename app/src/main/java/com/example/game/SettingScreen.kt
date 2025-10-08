@@ -104,15 +104,11 @@ class SettingScreenActivity : ComponentActivity() {
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "Mỗi vật phẩm có giá 2 ",
+                            text = "  ",
                             color = Color.White,
                             fontSize = 20.sp
                         )
-                        Image(
-                            painter = painterResource(coinImage),
-                            contentDescription = "Coin",
-                            modifier = Modifier.size(28.dp)
-                        )
+
                     }
 
                     @OptIn(ExperimentalLayoutApi::class)
@@ -135,11 +131,7 @@ class SettingScreenActivity : ComponentActivity() {
                                 .size(30.dp)
                                 .padding(horizontal = 4.dp)
                         )
-                        Text(
-                            text = " và bấm vào vật phẩm muốn dùng.",
-                            color = Color.White,
-                            fontSize = 20.sp
-                        )
+
                     }
 
                     @OptIn(ExperimentalLayoutApi::class)

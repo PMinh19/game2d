@@ -157,15 +157,15 @@ fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Button(onClick = onPlayClicked) {
-                Text("Play")
+                Text("Chơi")
             }
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { context.startActivity(Intent(context, RankScreenActivity::class.java)) }
-            ) { Text("Rank") }
+            ) { Text("Xếp hạng") }
             Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = { context.startActivity(Intent(context, SettingScreenActivity::class.java)) }
-            ) { Text("Hepl") }
+            ) { Text("Hướng dẫn") }
         }
     }
 }
